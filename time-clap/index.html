@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SUPER FINAL CALL: 10s Boarding Clap</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght=700&family=Share+Tech+Mono&family=Noto+Sans+KR:wght=400;700&display=swap');
+
+        body {
+            background-color: #050508;
+            color: #ffffff;
+            font-family: 'Share Tech Mono', 'Noto Sans KR', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* 1. 웹캠 가상 배경 필터 */
+        #webcam {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover;
+            opacity: 0.12;
+            filter: grayscale(1) contrast(1.8) brightness(0.7);
+            z-index: -1;
+            transform: scaleX(-1);
+        }
+
+        /* 메인 컨테이너 */
+        .fids-container {
+            width: 95%;
+            max-width: 700px;
+            background: rgba(18, 18, 28, 0.9);
+            border: 4px solid #3d3d5c;
+            border-radius: 12px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.8), inset 0 0 20px rgba(255,255,255,0.02);
+            padding: 25px;
+            box-sizing: border-box;
+            backdrop-filter: blur(5px);
+            transition: transform 0.1s ease;
+        }
+
+        /* 화면 흔들림 애니메이션 */
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            20% { transform: translate(-8px, 6px) scale(1.02); }
+            40% { transform: translate(8px, -6px) scale(0.99); }
+            60% { transform: translate(-5px, -3px) scale(1.01); }
+            80% { transform: translate(5px, 5px) scale(1); }
+        }
+        .screen-shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+
+        .fids-header {
+            border-bottom: 2px dashed #3d3d5c;
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .fids-title { color: #ff9f43; font-size: 1.3rem; font-weight: bold; letter-spacing: 2px; }
+        .fids-gate { background: #ffb703; color: #000; padding: 3px 10px; font-weight: bold; border-radius: 3px; }
+
+        .flight-info-table { width: 100%; margin-bottom: 20px; font-size: 1rem; color: #a4b0be; text-align: left;}
+        .flight-info-table th { color: #57606f; font-size: 0.85rem; }
+        .status-blink { color: #ff4757; font-weight: bold; animation: blink 1s infinite alternate; }
+
+        /* 타이머 & 블라인드 상태 표시 */
+        .timer-box {
+            background: #020204;
+            border: 2px solid #252538;
+            border-radius: 8px;
+            padding: 35px 10px;
+            text-align: center;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        .timer-display {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 5rem;
+            color: #00ffcc;
+            text-shadow: 0 0 20px rgba(0, 255, 204, 0.5);
+            letter-spacing: 3px;
+        }
+        .blind-warning {
+            position: absolute;
+            bottom: 8px; left: 50%; transform: translateX(-50%);
+            font-size: 0.85rem; color: #ff4757; display: none;
+            letter-spacing: 1px; font-weight: bold;
+        }
+
+        /* 명예의 전당 */
+        .leaderboard-section {
+            background: rgba(5, 5, 10, 0.6);
+            border: 1px solid #252538;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 20px;
+        }
+        .leaderboard-title {
+            font-size: 0.85rem; color: #ffb703; margin-bottom: 8px;
+            display: flex; justify-content: space-between; letter-spacing: 1px;
+        }
+        .ranking-list { display: flex; gap: 10px; justify-content: space-between; margin: 0; padding: 0; list-style: none; font-size: 0.9rem;}
+        .ranking-item { background: #1a1a2e; padding: 4px 10px; border-radius: 4px; border-left: 3px solid #ff9f43; flex: 1; text-align: center;}
+
+        /* 컨트롤 영역 */
+        .control-section { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .action-btn {
+            background: #ff9f43; color: #0b0b12; border: none; padding: 16px;
+            font-family: 'Orbitron', sans-serif; font-size: 1.4rem; font-weight: bold;
+            cursor: pointer; border-radius: 6px; transition: all 0.2s;
+            box-shadow: 0 5px 0 #cc7a29; width: 100%; box-sizing: border-box;
+        }
+        .action-btn:active { transform: translateY(4px); box-shadow: none; }
+        .action-btn.running { background: #ff4757; color: white; box-shadow: 0 5px 0 #b33939; }
+
+        .mic-indicator { width: 100%; height: 6px; background: #222; border-radius: 3px; overflow: hidden; }
+        .mic-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #2ed573, #ffa502, #ff4757); }
+
+        /* 팝업 모달 & 가상 탑승권 */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: flex; justify-content: center;
+            align-items: center; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; z-index: 10;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+
+        .boarding-pass {
+            background: #f5f6fa; color: #2f3640; width: 360px; border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5); font-family: 'Noto Sans KR', sans-serif;
+            overflow: hidden; position: relative; transform: scale(0.8); transition: transform 0.3s ease;
+        }
+        .modal-overlay.active .boarding-pass { transform: scale(1); }
+
+        .pass-header { background: #2f3542; color: #fff; padding: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .pass-header .logo { font-family: 'Orbitron', sans-serif; font-weight: bold; font-size: 1.2rem; letter-spacing: 2px; }
+        .pass-header .tier { padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
+        
+        .pass-body { padding: 20px; position: relative; }
+        .pass-row { display: flex; justify-content: space-between; margin-bottom: 15px; }
+        .pass-col { display: flex; flex-direction: column; }
+        .pass-label { font-size: 0.75rem; color: #747d8c; margin-bottom: 2px; font-weight: bold;}
+        .pass-value { font-size: 1.1rem; font-weight: bold; color: #2f3542; }
+        .pass-value.highlight { font-family: 'Orbitron', sans-serif; color: #ff7f50; font-size: 1.4rem; }
+
+        .pass-divider { border-top: 2px dashed #ced6e0; margin: 15px 0; position: relative; }
+        .pass-divider::before, .pass-divider::after {
+            content: ''; position: absolute; top: -8px; width: 16px; height: 16px; background: #050508; border-radius: 50%;
+        }
+        .pass-divider::before { left: -28px; } .pass-divider::after { right: -28px; }
+
+        .barcode-area { display: flex; flex-direction: column; align-items: center; padding: 10px 0; }
+        .barcode { display: flex; height: 45px; width: 85%; align-items: stretch; margin-bottom: 5px;}
+        .barcode div { background: #000; }
+        .barcode-num { font-size: 0.75rem; letter-spacing: 4px; color: #747d8c; }
+
+        .pass-btn-box { padding: 0 20px 20px 20px; }
+        .retry-btn {
+            background: #2f3542; color: white; border: none; width: 100%; padding: 12px;
+            border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 1rem;
+        }
+
+        .tier-first { background: #ffd700; color: #000; }
+        .tier-business { background: #70a1ff; color: #fff; }
+
+        @keyframes blink { 0% { opacity: 0.3; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <video id="webcam" autoplay playsinline muted></video>
+
+    <div class="fids-container" id="fids-main">
+        <div class="fids-header">
+            <span class="fids-title">▲ FINAL CALL: BOARDING CLOSE IN 10s</span>
+            <span class="fids-gate">GATE 24A</span>
+        </div>
+
+        <table class="flight-info-table">
+            <thead>
+                <tr><th>FLIGHT</th><th>DESTINATION</th><th>MODE</th><th>REMARK</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>KE 2026</td>
+                    <td>TOKYO / PARIS</td>
+                    <td style="color:#ffb703; font-weight:bold;">BLIND (5s)</td>
+                    <td class="status-blink" id="flight-status">LAST CALL</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="timer-box">
+            <div class="timer-display" id="timer">0.00</div>
+            <div class="blind-warning" id="blind-warn">⚠️ BLIND MODE ACTIVE (감각에 의존하세요!)</div>
+        </div>
+
+        <div class="leaderboard-section">
+            <div class="leaderboard-title">
+                <span>🏆 TODAY'S BEST TOP 3 (명예의 전당)</span>
+                <span style="font-size:0.75rem; color:#747d8c;">Target: 10.00s</span>
+            </div>
+            <ul class="ranking-list" id="ranking-board">
+                <li class="ranking-item">1st: 10.02s</li>
+                <li class="ranking-item">2nd: 9.91s</li>
+                <li class="ranking-item">3rd: 10.15s</li>
+            </ul>
+        </div>
+
+        <div class="control-section">
+            <button class="action-btn" id="action-btn">탑승 수속 시작 (START)</button>
+            <div class="mic-indicator"><div class="mic-bar" id="mic-bar"></div></div>
+            <div style="font-size:0.8rem; color:#57606f;" id="status-msg">🎤 박수 소리(임펄스 신호)를 내거나 화면 버튼을 누르세요!</div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="result-modal">
+        <div class="boarding-pass">
+            <div class="pass-header">
+                <span class="logo">GEMINI AIR</span>
+                <span class="tier" id="ticket-tier">FIRST CLASS</span>
+            </div>
+            <div class="pass-body">
+                <div class="pass-row">
+                    <div class="pass-col">
+                        <span class="pass-label">PASSENGER NAME</span>
+                        <span class="pass-value">CHALLENGER / REYNOLDS</span>
+                    </div>
+                    <div class="pass-col" style="text-align: right;">
+                        <span class="pass-label">RECORD TIME</span>
+                        <span class="pass-value highlight" id="ticket-time">10.01s</span>
+                    </div>
+                </div>
+                <div class="pass-row">
+                    <div class="pass-col">
+                        <span class="pass-label">FLIGHT</span>
+                        <span class="pass-value">KE2026</span>
+                    </div>
+                    <div class="pass-col">
+                        <span class="pass-label">GATE</span>
+                        <span class="pass-value">24A</span>
+                    </div>
+                    <div class="pass-col">
+                        <span class="pass-label">SEAT</span>
+                        <span class="pass-value" id="ticket-seat">01A</span>
+                    </div>
+                </div>
+                
+                <div class="pass-divider"></div>
+                
+                <div class="pass-col" style="margin-bottom: 15px;">
+                    <span class="pass-label">REWARD STATUS</span>
+                    <span class="pass-value" id="ticket-comment" style="font-size:0.95rem; color:#2ed573;">최고급 한정판 오피셜 굿즈 당첨!</span>
+                </div>
+
+                <div class="barcode-area">
+                    <div class="barcode" id="dynamic-barcode"></div>
+                    <span class="barcode-num" id="barcode-num">2026100000</span>
+                </div>
+            </div>
+            <div class="pass-btn-box">
+                <button class="retry-btn" onclick="closeModal()">다시 도전 (RETRY)</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let timerInterval, startTime, isRunning = false;
+        let audioContext, analyser, streamRef;
+        
+        // 정교해진 오디오 변수
+        let prevVolume = 0;
+        let ambientNoiseFloor = 0; 
+        const CLAP_DELTA_THRESHOLD = 0.28; // 순간적인 소리 크기 변화량 기준값
+
+        let rankings = JSON.parse(localStorage.getItem('boarding_rank')) || [10.04, 9.92, 10.12];
+
+        const fidsContainer = document.getElementById('fids-main');
+        const timerDisplay = document.getElementById('timer');
+        const actionBtn = document.getElementById('action-btn');
+        const flightStatus = document.getElementById('flight-status');
+        const micBar = document.getElementById('mic-bar');
+        const blindWarn = document.getElementById('blind-warn');
+        const statusMsg = document.getElementById('status-msg');
+        
+        const modal = document.getElementById('result-modal');
+        const ticketTier = document.getElementById('ticket-tier');
+        const ticketTime = document.getElementById('ticket-time');
+        const ticketSeat = document.getElementById('ticket-seat');
+        const ticketComment = document.getElementById('ticket-comment');
+        const barcodeNum = document.getElementById('barcode-num');
+
+        window.onload = () => { renderRankings(); renderBarcode(); };
+
+        actionBtn.addEventListener('click', async () => {
+            if (isRunning) stopGame(performance.now());
+            else { await initMedia(); startGame(); }
+        });
+
+        async function initMedia() {
+            if (streamRef) return; // 미디어 스트림 중복 생성 방지
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: { echoCancellation: true, noiseSuppression: true }, 
+                    video: true 
+                });
+                streamRef = stream;
+                document.getElementById('webcam').srcObject = stream;
+
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser.fftSize = 256;
+                source.connect(analyser);
+            } catch (err) {
+                statusMsg.innerText = "⚠️ 마이크/카메라 없음: 버튼 클릭으로만 작동합니다.";
+                statusMsg.style.color = "#ff4757";
+            }
+        }
+
+        function startGame() {
+            isRunning = true;
+            actionBtn.innerText = "짝! (CLAP / BUTTON CLICK)";
+            actionBtn.classList.add('running');
+            flightStatus.innerText = "BOARDING";
+            flightStatus.style.color = "#2ed573";
+            blindWarn.style.display = 'none';
+            timerDisplay.style.color = "#00ffcc";
+            
+            prevVolume = 0;
+            ambientNoiseFloor = 0; // 환경음 초기화
+            startTime = performance.now();
+            
+            // 오디오 트래킹 시작
+            if (analyser) {
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                const trackAudio = () => {
+                    if (!isRunning) return;
+                    analyser.getByteFrequencyData(dataArray);
+
+                    let maxVal = 0;
+                    for (let i = 0; i < bufferLength; i++) { if(dataArray[i] > maxVal) maxVal = dataArray[i]; }
+                    const currentVolume = maxVal / 255;
+
+                    const elapsed = (performance.now() - startTime) / 1000;
+
+                    // 1. [고도화] 초기 0.4초간 주변 환경 소음도(Noise Floor)를 자동 측정 및 보정
+                    if (elapsed < 0.4) {
+                        if (currentVolume > ambientNoiseFloor) ambientNoiseFloor = currentVolume;
+                    }
+
+                    // 2. [고도화] 절대값이 아닌 이전 프레임 대비 "변화량(Delta)" 계산 (연속적인 소음 무시)
+                    const delta = currentVolume - prevVolume;
+                    prevVolume = currentVolume;
+
+                    // 게이지는 환경 소음을 제외한 순수 소리 타격 반응만 표기
+                    const displayVol = Math.max(0, currentVolume - ambientNoiseFloor);
+                    micBar.style.width = `${displayVol * 100}%`;
+
+                    // 3. 0.5초 안전 가드 타임 이후, 환경음보다 크면서 '순간 변화량'이 급격한 경우에만 박수로 인정!
+                    if (elapsed > 0.5 && delta > CLAP_DELTA_THRESHOLD && currentVolume > ambientNoiseFloor + 0.15) {
+                        stopGame(performance.now());
+                        return;
+                    }
+                    requestAnimationFrame(trackAudio);
+                };
+                requestAnimationFrame(trackAudio);
+            }
+
+            timerInterval = requestAnimationFrame(updateTimer);
+        }
+
+        function updateTimer() {
+            if (!isRunning) return;
+            const elapsed = (performance.now() - startTime) / 1000;
+
+            if (elapsed >= 5.0) {
+                timerDisplay.innerText = "??.??";
+                timerDisplay.style.color = "#ff4757";
+                blindWarn.style.display = 'block';
+            } else {
+                timerDisplay.innerText = elapsed.toFixed(2);
+            }
+
+            if (elapsed > 13) stopGame(startTime + 13000); 
+            else timerInterval = requestAnimationFrame(updateTimer);
+        }
+
+        function stopGame(endTime) {
+            if (!isRunning) return;
+            isRunning = false;
+            cancelAnimationFrame(timerInterval);
+
+            fidsContainer.classList.add('screen-shake');
+            setTimeout(() => fidsContainer.classList.remove('screen-shake'), 400);
+
+            actionBtn.innerText = "탑승 수속 시작 (START)";
+            actionBtn.classList.remove('running');
+            flightStatus.innerText = "CLOSED";
+            flightStatus.style.color = "#ff4757";
+
+            const finalTime = (endTime - startTime) / 1000;
+            timerDisplay.innerText = finalTime.toFixed(2);
+
+            calculateScore(finalTime);
+        }
+
+        function calculateScore(score) {
+            const diff = Math.abs(score - 10.00);
+            updateRankings(score);
+
+            ticketTime.innerText = `${score.toFixed(2)}s`;
+            const randSerial = Math.floor(100000 + Math.random() * 900000);
+            barcodeNum.innerText = `2026-${randSerial}`;
+
+            if (diff <= 0.05) {
+                ticketTier.innerText = "FIRST CLASS";
+                ticketTier.className = "tier tier-first";
+                ticketSeat.innerText = "01A (WINDOW)";
+                ticketComment.innerText = "✈️ 대성공! 퍼스트 클래스 최고급 한정 굿즈 보상 수령 대상자입니다.";
+                ticketComment.style.color = "#ffd700";
+                playSynthSound(true);
+            } else {
+                ticketTier.innerText = "BUSINESS CLASS";
+                ticketTier.className = "tier tier-business";
+                ticketSeat.innerText = "14C (AISLE)";
+                ticketComment.innerText = `아쉽게 비행기를 놓쳤습니다! 오차범위 초과로 비즈니스 클래스 보상을 드립니다.`;
+                ticketComment.style.color = "#70a1ff";
+                playSynthSound(false);
+            }
+
+            modal.classList.add('active');
+        }
+
+        function updateRankings(newScore) {
+            rankings.push(Number(newScore.toFixed(2)));
+            rankings.sort((a, b) => Math.abs(a - 10.00) - Math.abs(b - 10.00));
+            rankings = rankings.slice(0, 3);
+            localStorage.setItem('boarding_rank', JSON.stringify(rankings));
+            renderRankings();
+        }
+
+        function renderRankings() {
+            const board = document.getElementById('ranking-board');
+            board.innerHTML = rankings.map((score, index) => {
+                let medal = ["1st 🥇", "2nd 🥈", "3rd 🥉"][index];
+                return `<li class="ranking-item" ${Math.abs(score-10)<=0.05?'style="border-left-color:#ffd700; color:#ffd700;"':''}>${medal}: ${score.toFixed(2)}s</li>`;
+            }).join('');
+        }
+
+        function renderBarcode() {
+            const bc = document.getElementById('dynamic-barcode');
+            bc.innerHTML = '';
+            for(let i=0; i<35; i++) {
+                const el = document.createElement('div');
+                el.style.width = (Math.random() > 0.4 ? (Math.random() > 0.7 ? '4px' : '2px') : '1px');
+                el.style.marginRight = (Math.random() > 0.5 ? '2px' : '1px');
+                bc.appendChild(el);
+            }
+        }
+
+        function closeModal() {
+            modal.classList.remove('active');
+            timerDisplay.innerText = "0.00";
+            micBar.style.width = "0%";
+            blindWarn.style.display = 'none';
+            timerDisplay.style.color = "#00ffcc";
+        }
+
+        function playSynthSound(isWin) {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            if (isWin) {
+                const bufferSize = ctx.sampleRate * 1.5;
+                const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; }
+                const noise = ctx.createBufferSource(); noise.buffer = buffer;
+                const filter = ctx.createBiquadFilter(); filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(150, ctx.currentTime);
+                filter.frequency.exponentialRampToValueAtTime(6000, ctx.currentTime + 1.2);
+                const gain = ctx.createGain(); gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.4);
+                noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+                noise.start();
+                setTimeout(() => { playTone(ctx, 523, 0); playTone(ctx, 659, 0.12); playTone(ctx, 783, 0.24); }, 200);
+            } else {
+                playTone(ctx, 392, 0); playTone(ctx, 349, 0.15);
+            }
+        }
+
+        function playTone(ctx, freq, delay) {
+            const osc = ctx.createOscillator(); const gain = ctx.createGain();
+            osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+            gain.gain.setValueAtTime(0.15, ctx.currentTime + delay);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.4);
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + 0.4);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>현대면세점 - Gold Coin Flick (Hand Tracking)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: 'Noto Sans KR', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        header {
+            text-align: center;
+            padding: 20px 0;
+            z-index: 10;
+        }
+
+        h1 { margin: 0; font-size: 24px; color: #d4af37; }
+        p { margin: 5px 0 10px; font-size: 14px; color: #aaa; }
+        
+        #status {
+            color: #00ff00;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        /* 게임 보드 */
+        #game-board {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            height: 600px;
+            background: linear-gradient(to top, #2c1e16, #4a3320);
+            border: 4px solid #111;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        /* 혜택 구간 */
+        .zone {
+            position: absolute;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            border-bottom: 2px dashed rgba(212, 175, 55, 0.3);
+            box-sizing: border-box;
+        }
+        
+        #zone-goods { height: 15%; top: 0; background-color: rgba(212, 175, 55, 0.4); color: #fff; }
+        #zone-50k { height: 25%; top: 15%; background-color: rgba(212, 175, 55, 0.2); }
+        #zone-10k { height: 30%; top: 40%; background-color: rgba(212, 175, 55, 0.1); }
+        #zone-fail { height: 30%; top: 70%; background-color: transparent; color: #888;}
+
+        /* 골드 코인 */
+        #coin {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            margin-left: -35px;
+            width: 70px;
+            height: 70px;
+            background: radial-gradient(circle, #f9f295, #e0aa3e, #b8860b);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5), inset 0 2px 5px rgba(255,255,255,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            color: #5a3c00;
+            font-size: 14px;
+            text-align: center;
+            transition: transform 1.5s cubic-bezier(0.1, 0.8, 0.2, 1);
+            z-index: 5;
+        }
+
+        /* 결과 모달창 */
+        #result-modal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            border: 2px solid #d4af37;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            z-index: 10;
+            width: 80%;
+        }
+
+        #result-modal h2 { margin-top: 0; color: #d4af37; }
+        #result-modal button {
+            background: #d4af37;
+            color: #111;
+            border: none;
+            padding: 10px 20px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+
+        /* 웹캠 프리뷰 (우측 하단) */
+        #webcam-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border: 2px solid #d4af37;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+            z-index: 20;
+        }
+        
+        #webcam, #output_canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* 거울 모드 */
+        }
+
+        /* 내 손 위치를 알려주는 가상 커서 */
+        #finger-cursor {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            background-color: rgba(212, 175, 55, 0.8);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            pointer-events: none; /* 클릭 이벤트 방해 방지 */
+            z-index: 9999;
+            display: none;
+            box-shadow: 0 0 15px rgba(212, 175, 55, 1);
+            transform: translate(-50%, -50%);
+            transition: left 0.05s ease-out, top 0.05s ease-out; /* 부드러운 움직임 */
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>현대면세점 GOLD COIN FLICK</h1>
+        <p>카메라를 향해 손가락을 위로 튕겨(Flick) 보세요!</p>
+        <div id="status">카메라 로딩 중... 손을 인식하면 시작됩니다.</div>
+    </header>
+
+    <div id="game-board">
+        <div id="zone-goods" class="zone">스페셜 굿즈</div>
+        <div id="zone-50k" class="zone">h.Point 5만 점</div>
+        <div id="zone-10k" class="zone">h.Point 1만 점</div>
+        <div id="zone-fail" class="zone">시작점 / 아차상</div>
+        
+        <div id="coin">HD<br>DUTY FREE</div>
+        
+        <div id="result-modal">
+            <h2 id="result-title">결과</h2>
+            <p id="result-desc"></p>
+            <button onclick="resetGame()">다시 하기</button>
+        </div>
+    </div>
+
+    <div id="finger-cursor"></div>
+
+    <div id="webcam-container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="output_canvas"></canvas>
+    </div>
+
+    <script>
+        const coin = document.getElementById('coin');
+        const board = document.getElementById('game-board');
+        const modal = document.getElementById('result-modal');
+        const resultTitle = document.getElementById('result-title');
+        const resultDesc = document.getElementById('result-desc');
+        const statusText = document.getElementById('status');
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const fingerCursor = document.getElementById('finger-cursor');
+
+        let isFlicked = false;
+        let lastIndexY = null;
+        let lastTime = null;
+        let isCameraReady = false;
+
+        // MediaPipe Hands 초기화
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        function onResults(results) {
+            // 프리뷰 캔버스 크기를 비디오에 맞춤
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+            
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (!isCameraReady) {
+                isCameraReady = true;
+                statusText.innerText = "준비 완료! 손가락을 위로 튕겨보세요.";
+                statusText.style.color = "#d4af37";
+            }
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // 1. 프리뷰 화면에 손 뼈대 그리기
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#ffffff', lineWidth: 2});
+                drawLandmarks(canvasCtx, landmarks, {color: '#d4af37', lineWidth: 1, radius: 3});
+
+                // 2. 가상 커서 위치 업데이트 (검지 끝부분 - Landmark 8번)
+                const indexTip = landmarks[8];
+                fingerCursor.style.display = 'block';
+                
+                // 웹캠이 거울 모드이므로 x축 반전 (1 - x) 적용
+                const cursorX = (1 - indexTip.x) * window.innerWidth;
+                const cursorY = indexTip.y * window.innerHeight;
+                
+                fingerCursor.style.left = `${cursorX}px`;
+                fingerCursor.style.top = `${cursorY}px`;
+
+                // 3. 플릭(Flick) 액션 계산
+                const currentTime = Date.now();
+                if (lastIndexY !== null && lastTime !== null && !isFlicked) {
+                    const deltaY = lastIndexY - indexTip.y;
+                    const deltaTime = currentTime - lastTime;
+                    const velocity = deltaY / deltaTime; 
+
+                    if (velocity > 0.003) { 
+                        let power = velocity * 150000; 
+                        if(power > 100) {
+                            executeFlick(power);
+                        }
+                    }
+                }
+                lastIndexY = indexTip.y;
+                lastTime = currentTime;
+            } else {
+                // 손이 안 보일 때 커서 숨기기 및 초기화
+                fingerCursor.style.display = 'none';
+                lastIndexY = null;
+                lastTime = null;
+            }
+            canvasCtx.restore();
+        }
+
+        // 카메라 실행
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 320,
+            height: 240
+        });
+        camera.start();
+
+        // 코인 플릭 실행
+        function executeFlick(power) {
+            isFlicked = true;
+            statusText.innerText = "코인이 날아갑니다!";
+            coin.style.transform = `translateY(-${power}px)`;
+        }
+
+        // 코인 멈춤 후 결과 판정
+        coin.addEventListener('transitionend', () => {
+            if (!isFlicked) return;
+            
+            const coinRect = coin.getBoundingClientRect();
+            const boardRect = board.getBoundingClientRect();
+            const relativeY = coinRect.top + (coinRect.height / 2) - boardRect.top;
+            const percentage = (relativeY / boardRect.height) * 100;
+
+            showResult(percentage);
+        });
+
+        function showResult(percent) {
+            modal.style.display = 'block';
+            
+            if (percent < 0) {
+                resultTitle.innerText = "🚨 테이블 이탈!";
+                resultTitle.style.color = "#ff4444";
+                resultDesc.innerText = "힘 조절 실패! 코인이 테이블 밖으로 날아갔습니다.";
+            } else if (percent <= 15) {
+                resultTitle.innerText = "🎉 축하합니다!";
+                resultTitle.style.color = "#d4af37";
+                resultDesc.innerText = "최고 혜택 [스페셜 굿즈]에 당첨되셨습니다!";
+            } else if (percent <= 40) {
+                resultTitle.innerText = "🎊 축하합니다!";
+                resultTitle.style.color = "#d4af37";
+                resultDesc.innerText = "h.Point 5만 점에 당첨되셨습니다!";
+            } else if (percent <= 70) {
+                resultTitle.innerText = "👏 당첨!";
+                resultTitle.style.color = "#d4af37";
+                resultDesc.innerText = "h.Point 1만 점에 당첨되셨습니다!";
+            } else {
+                resultTitle.innerText = "아차!";
+                resultTitle.style.color = "#aaa";
+                resultDesc.innerText = "힘이 조금 부족했네요. 다음 기회에 도전해보세요!";
+            }
+        }
+
+        function resetGame() {
+            modal.style.display = 'none';
+            coin.style.transition = 'none'; 
+            coin.style.transform = 'translateY(0)';
+            void coin.offsetWidth; 
+            coin.style.transition = 'transform 1.5s cubic-bezier(0.1, 0.8, 0.2, 1)';
+            statusText.innerText = "준비 완료! 손가락을 위로 튕겨보세요.";
+            statusText.style.color = "#d4af37";
+            
+            setTimeout(() => {
+                isFlicked = false;
+                lastIndexY = null;
+            }, 500);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>행운의 골든 스트링 팝 - 현대면세점</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #3a3a3a 100%);
+            color: #fff;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* 웹캠 비디오 (화면에는 숨김 처리) */
+        #input_video { display: none; }
+
+        /* 핸드 트래킹 가상 커서 */
+        #handCursor {
+            position: fixed;
+            font-size: 40px;
+            pointer-events: none;
+            z-index: 9999;
+            transform: translate(-50%, -50%);
+            display: none; /* 손이 인식될 때만 표시 */
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+            transition: transform 0.1s;
+        }
+
+        /* 로딩 상태창 */
+        #loadingMsg {
+            position: absolute;
+            top: 10px;
+            background: rgba(0,0,0,0.6);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            color: #f3e5ab;
+            z-index: 100;
+        }
+
+        /* 헤더 / 타이틀 */
+        .header { margin-top: 60px; text-align: center; z-index: 10; }
+        .header h1 { font-size: 28px; color: #d4af37; text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-bottom: 10px; }
+        .header p { font-size: 16px; color: #ccc; }
+
+        /* 메인 게임 영역 */
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 50px;
+        }
+
+        /* 대형 선물 상자 */
+        .gift-box {
+            position: relative;
+            width: 200px;
+            height: 150px;
+            background: linear-gradient(45deg, #d4af37, #f3e5ab, #d4af37);
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px;
+            z-index: 5;
+            transition: transform 0.1s;
+        }
+        .gift-box::before {
+            content: ''; position: absolute; width: 100%; height: 20px;
+            background: #b81d22; top: 50%; transform: translateY(-50%);
+        }
+        .gift-box::after {
+            content: ''; position: absolute; width: 20px; height: 100%;
+            background: #b81d22; left: 50%; transform: translateX(-50%);
+        }
+
+        /* 당길 수 있는 줄 (3가닥) */
+        .strings-container {
+            display: flex; justify-content: space-evenly;
+            width: 250px; margin-top: -10px; z-index: 4;
+        }
+        .string-wrapper {
+            display: flex; flex-direction: column; align-items: center;
+            cursor: grab; touch-action: none;
+        }
+        .string-wrapper:active { cursor: grabbing; }
+        .string {
+            width: 6px; height: 250px;
+            background: linear-gradient(to bottom, #f3e5ab, #d4af37);
+            box-shadow: 0 0 5px rgba(212, 175, 55, 0.5);
+            position: relative; transform-origin: top;
+        }
+        .handle {
+            width: 24px; height: 24px; background: #d4af37;
+            border-radius: 50%; margin-top: -5px; box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+        }
+
+        /* 결과 화면 (플래카드 & 경품) */
+        .result-screen {
+            position: absolute; top: 50px; width: 100%; display: none;
+            flex-direction: column; align-items: center; z-index: 20;
+        }
+        .placard {
+            background: #b81d22; color: #fff; padding: 15px 40px;
+            font-size: 24px; font-weight: bold; border-radius: 5px;
+            border: 2px solid #d4af37; box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            transform: translateY(-100vh); transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .prize-image {
+            margin-top: 30px; width: 200px; height: 200px; background: #fff;
+            border-radius: 15px; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; box-shadow: 0 0 40px rgba(212, 175, 55, 0.8);
+            transform: scale(0); transition: transform 0.5s ease-out 0.5s;
+        }
+        .prize-image span { font-size: 80px; }
+        .prize-name { color: #333; font-weight: bold; font-size: 18px; margin-top: 10px; }
+
+        /* 다시 뽑기 버튼 */
+        .retry-btn {
+            margin-top: 40px;
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #1a1a1a;
+            background: linear-gradient(to right, #d4af37, #f3e5ab);
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.4);
+            opacity: 0;
+            transition: opacity 0.5s ease 1s, transform 0.2s;
+            pointer-events: none;
+        }
+        .retry-btn.show-btn {
+            opacity: 1; pointer-events: auto;
+        }
+        .retry-btn:hover { transform: scale(1.05); }
+        .retry-btn:active { transform: scale(0.95); }
+
+        /* 폭죽 효과 캔버스 */
+        #confetti {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 15;
+        }
+
+        /* 애니메이션 유틸리티 */
+        .hide { display: none !important; }
+        .show-drop { transform: translateY(0); }
+        .show-pop { transform: scale(1); }
+        .shake { animation: shake 0.5s infinite; }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loadingMsg">웹캠을 로딩 중입니다... (카메라를 허용해주세요)</div>
+    <video id="input_video" autoplay playsinline></video>
+    <div id="handCursor">🖐️</div>
+
+    <div class="header" id="headerInfo">
+        <h1>Lucky String Pull</h1>
+        <p>웹캠 앞에서 두 손가락을 모아 줄을 잡고 당겨주세요!<br>(마우스/터치도 가능합니다)</p>
+    </div>
+
+    <div class="game-container">
+        <div class="gift-box" id="giftBox"></div>
+        
+        <div class="strings-container" id="stringsContainer">
+            <div class="string-wrapper" data-index="0">
+                <div class="string"></div>
+                <div class="handle"></div>
+            </div>
+            <div class="string-wrapper" data-index="1">
+                <div class="string"></div>
+                <div class="handle"></div>
+            </div>
+            <div class="string-wrapper" data-index="2">
+                <div class="string"></div>
+                <div class="handle"></div>
+            </div>
+        </div>
+
+        <div class="result-screen" id="resultScreen">
+            <div class="placard" id="placard">🎉 Congratulations! 🎉</div>
+            <div class="prize-image" id="prizeImage">
+                <span id="prizeEmoji">👜</span>
+                <div class="prize-name" id="prizeName">럭셔리 명품 백</div>
+            </div>
+            <button class="retry-btn" id="retryBtn">다시 뽑기 🔄</button>
+        </div>
+    </div>
+
+    <canvas id="confetti"></canvas>
+
+    <script>
+        // --- DOM 요소 할당 ---
+        const stringWrappers = document.querySelectorAll('.string-wrapper');
+        const giftBox = document.getElementById('giftBox');
+        const stringsContainer = document.getElementById('stringsContainer');
+        const resultScreen = document.getElementById('resultScreen');
+        const placard = document.getElementById('placard');
+        const prizeImage = document.getElementById('prizeImage');
+        const headerInfo = document.getElementById('headerInfo');
+        const prizeEmoji = document.getElementById('prizeEmoji');
+        const prizeName = document.getElementById('prizeName');
+        const retryBtn = document.getElementById('retryBtn');
+        const handCursor = document.getElementById('handCursor');
+        const loadingMsg = document.getElementById('loadingMsg');
+
+        // --- 게임 변수 세팅 ---
+        const prizes = [
+            { emoji: '👜', name: '럭셔리 명품 백' },
+            { emoji: '✈️', name: '해외여행 항공권' },
+            { emoji: '🧴', name: '프리미엄 뷰티 세트' },
+            { emoji: '⌚', name: '하이엔드 워치' }
+        ];
+
+        let isGameOver = false;
+        const PULL_THRESHOLD = 100; // 터지는 임계치
+
+        // 마우스/터치 전용 변수
+        let isDragging = false;
+        let startY = 0;
+        let currentString = null;
+
+        // 핸드 트래킹 전용 변수
+        let isHandGrabbing = false;
+        let grabbedStringByHand = null;
+        let handGrabStartY = 0;
+
+        // --- 마우스 / 터치 이벤트 ---
+        stringWrappers.forEach(wrapper => {
+            wrapper.addEventListener('pointerdown', (e) => {
+                if (isGameOver) return;
+                isDragging = true; startY = e.clientY; currentString = wrapper;
+                giftBox.classList.add('shake');
+                e.currentTarget.setPointerCapture(e.pointerId);
+            });
+            wrapper.addEventListener('pointermove', (e) => {
+                if (!isDragging || currentString !== wrapper || isGameOver) return;
+                let deltaY = e.clientY - startY;
+                if (deltaY > 0) {
+                    wrapper.style.transform = `translateY(${deltaY}px)`;
+                    if (deltaY > PULL_THRESHOLD) triggerPop();
+                }
+            });
+            wrapper.addEventListener('pointerup', cancelDrag);
+            wrapper.addEventListener('pointercancel', cancelDrag);
+        });
+
+        function cancelDrag() {
+            if (isDragging) {
+                isDragging = false; giftBox.classList.remove('shake');
+                if (currentString) { currentString.style.transform = 'translateY(0)'; currentString = null; }
+            }
+        }
+
+        // --- 박스 터지기 로직 ---
+        function triggerPop() {
+            if (isGameOver) return;
+            isGameOver = true;
+            isDragging = false; 
+            isHandGrabbing = false;
+
+            giftBox.classList.remove('shake');
+            giftBox.classList.add('hide');
+            stringsContainer.classList.add('hide');
+            headerInfo.classList.add('hide');
+
+            const randomPrize = prizes[Math.floor(Math.random() * prizes.length)];
+            prizeEmoji.innerText = randomPrize.emoji;
+            prizeName.innerText = randomPrize.name;
+
+            resultScreen.style.display = 'flex';
+            setTimeout(() => {
+                placard.classList.add('show-drop');
+                prizeImage.classList.add('show-pop');
+                retryBtn.classList.add('show-btn');
+            }, 100);
+
+            fireConfetti();
+        }
+
+        // --- 다시 뽑기(리셋) 로직 ---
+        retryBtn.addEventListener('click', resetGame);
+
+        function resetGame() {
+            isGameOver = false;
+            
+            // 파티클 정지
+            particles.length = 0; 
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 결과 화면 숨기기
+            placard.classList.remove('show-drop');
+            prizeImage.classList.remove('show-pop');
+            retryBtn.classList.remove('show-btn');
+            resultScreen.style.display = 'none';
+
+            // 줄 위치 초기화
+            stringWrappers.forEach(wrapper => {
+                wrapper.style.transform = 'translateY(0)';
+            });
+
+            // 게임 요소 다시 표시
+            giftBox.classList.remove('hide');
+            stringsContainer.classList.remove('hide');
+            headerInfo.classList.remove('hide');
+        }
+
+        // --- 폭죽 파티클 로직 ---
+        const canvas = document.getElementById('confetti');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const particles = [];
+        const colors = ['#d4af37', '#f3e5ab', '#ffdf00', '#ffffff'];
+
+        function fireConfetti() {
+            for (let i = 0; i < 150; i++) {
+                particles.push({
+                    x: canvas.width / 2, y: canvas.height * 0.3,
+                    r: Math.random() * 6 + 2, dx: Math.random() * 20 - 10,
+                    dy: Math.random() * -15 - 5,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    tilt: Math.floor(Math.random() * 10) - 10,
+                    tiltAngleInc: (Math.random() * 0.07) + 0.05, tiltAngle: 0
+                });
+            }
+            if(particles.length <= 150) animateConfetti(); 
+        }
+
+        function animateConfetti() {
+            if (particles.length === 0) return; // 파티클 없으면 중지
+            requestAnimationFrame(animateConfetti);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for(let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.tiltAngle += p.tiltAngleInc;
+                p.y += (Math.cos(p.tiltAngle) + 1 + p.r / 2) / 2;
+                p.x += Math.sin(p.tiltAngle) * 2;
+                p.dy += 0.5; p.y += p.dy;
+
+                ctx.beginPath(); ctx.lineWidth = p.r; ctx.strokeStyle = p.color;
+                ctx.moveTo(p.x + p.tilt + p.r, p.y); ctx.lineTo(p.x + p.tilt, p.y + p.tilt + p.r);
+                ctx.stroke();
+
+                if (p.y > canvas.height) particles.splice(i, 1);
+            }
+        }
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+        });
+
+        // --- 핸드 트래킹 (MediaPipe) 로직 ---
+        const videoElement = document.getElementById('input_video');
+        
+        function onResults(results) {
+            loadingMsg.style.display = 'none'; // 인식 시작되면 로딩 메시지 숨김
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                const indexTip = landmarks[8]; // 검지 끝
+                const thumbTip = landmarks[4]; // 엄지 끝
+
+                // 화면 좌표계로 변환 (웹캠은 좌우 반전되므로 1 - x)
+                const x = (1 - indexTip.x) * window.innerWidth;
+                const y = indexTip.y * window.innerHeight;
+
+                handCursor.style.left = `${x}px`;
+                handCursor.style.top = `${y}px`;
+                handCursor.style.display = 'block';
+
+                // 엄지와 검지 사이의 거리 계산 (Pinch 제스처 인식)
+                const distance = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+                const isPinching = distance < 0.05; // 거리가 가까우면 쥔 것으로 판정
+
+                if (isPinching && !isGameOver) {
+                    handCursor.innerText = '✊'; // 주먹 쥔 아이콘
+
+                    if (!isHandGrabbing) {
+                        isHandGrabbing = true;
+                        // 현재 손 위치 근처에 줄(String)이 있는지 확인
+                        stringWrappers.forEach(wrapper => {
+                            const rect = wrapper.getBoundingClientRect();
+                            // 약간의 오차 범위를 두어 잡기 쉽게 설정
+                            if (x > rect.left - 40 && x < rect.right + 40 && y > rect.top - 20 && y < rect.bottom + 100) {
+                                grabbedStringByHand = wrapper;
+                                handGrabStartY = y;
+                                giftBox.classList.add('shake');
+                            }
+                        });
+                    } else if (grabbedStringByHand) {
+                        // 쥔 상태로 당기기 (Drag)
+                        let deltaY = y - handGrabStartY;
+                        if (deltaY > 0) {
+                            grabbedStringByHand.style.transform = `translateY(${deltaY}px)`;
+                            if (deltaY > PULL_THRESHOLD) {
+                                triggerPop();
+                            }
+                        }
+                    }
+                } else {
+                    handCursor.innerText = '🖐️'; // 편 손 아이콘
+                    isHandGrabbing = false;
+                    if (grabbedStringByHand && !isGameOver) {
+                        grabbedStringByHand.style.transform = 'translateY(0)';
+                        giftBox.classList.remove('shake');
+                    }
+                    grabbedStringByHand = null;
+                }
+            } else {
+                handCursor.style.display = 'none'; // 손이 안 보이면 가상 커서 숨김
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+        camera.start().catch(err => {
+            loadingMsg.innerText = "웹캠에 접근할 수 없습니다. (HTTPS/로컬 호스트 필요)";
+            loadingMsg.style.color = "#ff4d4d";
+        });
+
+    </script>
+</body>
+</html>

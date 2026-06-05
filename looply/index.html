@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Looply - Your Hands, Your Story</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Pacifico&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root { --bg-color: #F7F4EB; --text-color: #1A1A1A; --guide-color: rgba(0,0,0,0.1); }
+        body { margin: 0; padding: 0; background-color: var(--bg-color); display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; font-family: 'Noto Sans KR', sans-serif; color: var(--text-color); overflow: hidden; }
+        .app-container { width: 100%; height: 100%; position: relative; display: flex; flex-direction: column; }
+
+        .header { display: flex; justify-content: space-between; align-items: center; padding: 30px 50px; z-index: 20; position: absolute; top: 0; width: 100%; box-sizing: border-box; }
+        .logo { font-family: 'Pacifico', cursive; font-size: 40px; margin: 0; letter-spacing: 2px; color: var(--text-color); clip-path: polygon(0 0, 0 0, 0 100%, 0 100%); animation: writeLogo 1.5s cubic-bezier(0.25, 0.1, 0.25, 1) 0.3s forwards; }
+        @keyframes writeLogo { 0% { clip-path: polygon(0 0, 0 0, 0 100%, 0 100%); } 100% { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); } }
+
+        .selection-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: var(--bg-color); z-index: 15; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s ease; }
+        .selection-title { font-size: 28px; margin-bottom: 50px; font-weight: 500; }
+        .menu-cards { display: flex; gap: 30px; }
+        .item-card { width: 220px; height: 280px; padding: 30px; border: 3px solid var(--text-color); border-radius: 20px; background: transparent; color: var(--text-color); cursor: pointer; transition: all 0.3s; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; }
+        .item-card:hover { background-color: var(--text-color); color: var(--bg-color); transform: translateY(-10px); }
+        .item-icon { font-size: 48px; } .item-name { font-size: 22px; font-weight: 500; }
+
+        .workspace { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .input_video { display: none; }
+        .output_canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); z-index: 1; }
+
+        .status-text { position: absolute; top: 15%; text-align: center; z-index: 10; font-size: 20px; line-height: 1.6; background: rgba(247, 244, 235, 0.9); padding: 20px 40px; border-radius: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); transition: all 0.3s ease; }
+        .highlight-text { color: #C19A6B; font-weight: 700; animation: pulse-text 1.5s infinite; }
+        @keyframes pulse-text { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.05); } }
+
+        /* SVG 컨테이너 */
+        .svg-container { position: absolute; z-index: 5; display: none; transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        
+        /* 1. 티코스터용 선(Stroke) 레이어 */
+        .yarn-layer { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+        .yarn-base { stroke: #1A1A1A; stroke-width: 24; filter: drop-shadow(0 8px 10px rgba(0,0,0,0.3)); }
+        .yarn-twist { stroke: #383838; stroke-width: 18; stroke-dasharray: 8 12; }
+        .yarn-hilite { stroke: rgba(255,255,255,0.15); stroke-width: 4; }
+        #maskPath { fill: none; stroke: white; stroke-width: 40; stroke-linecap: round; stroke-linejoin: round; transition: stroke-dashoffset 0.4s ease-out; }
+
+        /* 2. 장갑/목도리용 텍스처(면) 채우기 */
+        .shape-surface { fill: url(#chunky-knit-pattern); filter: drop-shadow(0 4px 10px rgba(0,0,0,0.4)); transition: all 0.4s ease-out; }
+        .shape-guide-outline { fill: none; stroke: var(--guide-color); stroke-width: 4; stroke-dasharray: 4 8; }
+
+        /* 가이드 점 */
+        .guide-dot { fill: #D4A373; filter: drop-shadow(0 0 10px #D4A373); transition: cx 0.3s ease-out, cy 0.3s ease-out; }
+        
+        .completed-pulse { animation: pulse-end 2s infinite ease-in-out; }
+        @keyframes pulse-end { 0%, 100% { filter: drop-shadow(0 0 0 rgba(26,26,26,0)); transform: scale(1); } 50% { filter: drop-shadow(0 0 20px rgba(26,26,26,0.3)); transform: scale(1.05); } }
+
+        /* 하단 컨트롤러 */
+        .progress-bar-container { position: absolute; bottom: 120px; width: 500px; height: 10px; background-color: #E2DDD0; border-radius: 10px; z-index: 10; display: none; overflow: hidden; }
+        .progress-fill { height: 100%; width: 0%; background-color: var(--text-color); transition: width 0.4s ease-out; }
+        .controls-wrapper { position: absolute; bottom: 40px; width: 100%; display: flex; justify-content: center; z-index: 10; }
+        .controls { display: flex; justify-content: space-around; align-items: center; gap: 30px; background-color: var(--bg-color); border: 2px solid var(--text-color); border-radius: 50px; padding: 15px 40px; }
+        .icon-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-color); transition: transform 0.2s;} .icon-btn:hover { transform: scale(1.1); }
+        
+        /* 다이어리 모달 */
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; display: none; flex-direction: column; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.4s ease; }
+        .overlay.show { opacity: 1; }
+        .close-btn { position: absolute; top: 20px; right: 40px; background: none; border: none; color: white; font-size: 40px; cursor: pointer; }
+        .polaroid-frame { background: white; padding: 20px 20px 60px 20px; border-radius: 5px; box-shadow: 0 20px 50px rgba(0,0,0,0.4); transform: rotate(-3deg) scale(0.9); transition: transform 0.4s; display: flex; flex-direction: column; align-items: center; position: relative; }
+        .overlay.show .polaroid-frame { transform: rotate(2deg) scale(1); }
+        .polaroid-photo-area { width: 400px; height: 400px; background: #E2DDD0; position: relative; overflow: hidden; }
+        .polaroid-img { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); position: absolute; top:0; left:0; }
+        .polaroid-caption { position: absolute; bottom: 20px; width: 100%; text-align: center; font-family: 'Pacifico', 'Noto Sans KR', sans-serif; font-size: 22px; color: #333; }
+        .diary-container { width: 80%; max-width: 1000px; height: 70%; background: var(--bg-color); border-radius: 20px; padding: 40px; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 30px; justify-content: center; }
+        .diary-title { width: 100%; text-align: center; font-family: 'Pacifico', cursive; font-size: 32px; margin-bottom: 20px; }
+        .diary-item { background: white; padding: 10px 10px 40px 10px; border-radius: 3px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); width: 200px; display: flex; flex-direction: column; align-items: center; position: relative; }
+        .diary-item:nth-child(even) { transform: rotate(3deg); } .diary-item:nth-child(odd) { transform: rotate(-2deg); }
+        .diary-item img { width: 180px; height: 180px; object-fit: cover; transform: scaleX(-1); }
+        .diary-item .caption { position: absolute; bottom: 10px; font-size: 14px; font-family: 'Pacifico', 'Noto Sans KR', sans-serif; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header class="header"><h1 class="logo">looply</h1></header>
+
+        <div class="selection-screen" id="selectionScreen">
+            <div class="selection-title">오늘 하루를 엮어낼 오브제를 선택하세요</div>
+            <div class="menu-cards">
+                <div class="item-card" onclick="startGame('coaster')">
+                    <div class="item-icon">☕</div><div class="item-name">티코스터</div><div class="item-desc">경로 따라 선 엮기 (20코)</div>
+                </div>
+                <div class="item-card" onclick="startGame('glove')">
+                    <div class="item-icon">🧤</div><div class="item-name">겨울 장갑</div><div class="item-desc">단별로 면 채우기 (50코)</div>
+                </div>
+                <div class="item-card" onclick="startGame('muffler')">
+                    <div class="item-icon">🧣</div><div class="item-name">롱 목도리</div><div class="item-desc">단별로 면 채우기 (100코)</div>
+                </div>
+            </div>
+        </div>
+
+        <main class="workspace" id="workspace">
+            <div class="status-text" id="statusText" style="display:none;">카메라를 준비하고 있어요...</div>
+            <video class="input_video" autoplay playsinline></video>
+            <canvas class="output_canvas" id="canvasElement"></canvas>
+
+            <svg class="svg-container" id="svgContainer" viewBox="0 0 350 350" width="350" height="350">
+                <defs>
+                    <mask id="draw-mask"><path id="maskPath" d=""></path></mask>
+                    
+                    <pattern id="chunky-knit-pattern" width="23" height="15" patternUnits="userSpaceOnUse" patternTransform="scale(0.5, 1.1)">
+                        <g stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M 0 0 L 11.5 12.5 L 23 0" fill="none" stroke="#1A1A1A" stroke-width="11" filter="drop-shadow(0px 1.5px 1px rgba(0,0,0,0.4))"/>
+                            <path d="M 0 0 L 11.5 12.5 L 23 0" fill="none" stroke="#383838" stroke-width="8" stroke-dasharray="2.5 3.5"/>
+                            <path d="M 0 0 L 11.5 12.5 L 23 0" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"/>
+                            
+                            <path d="M -11.5 15 L 0 27.5 L 11.5 15" fill="none" stroke="#1A1A1A" stroke-width="11"/>
+                            <path d="M -11.5 15 L 0 27.5 L 11.5 15" fill="none" stroke="#383838" stroke-width="8" stroke-dasharray="2.5 3.5"/>
+                            <path d="M -11.5 15 L 0 27.5 L 11.5 15" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"/>
+
+                            <path d="M 11.5 15 L 23 27.5 L 34.5 15" fill="none" stroke="#1A1A1A" stroke-width="11"/>
+                            <path d="M 11.5 15 L 23 27.5 L 34.5 15" fill="none" stroke="#383838" stroke-width="8" stroke-dasharray="2.5 3.5"/>
+                            <path d="M 11.5 15 L 23 27.5 L 34.5 15" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"/>
+                        </g>
+                    </pattern>
+
+                    <clipPath id="clip-rect-mask">
+                        <rect id="clip-rect" x="0" y="350" width="350" height="0" />
+                    </clipPath>
+                </defs>
+                
+                <path class="shape-guide-outline" id="pathGuideOutline" d=""></path>
+
+                <g id="strokeGroup" mask="url(#draw-mask)" style="display: none;">
+                    <path class="yarn-layer yarn-base" id="pathYarnBase" d=""></path>
+                    <path class="yarn-layer yarn-twist" id="pathYarnTwist" d=""></path>
+                    <path class="yarn-layer yarn-hilite" id="pathYarnHilite" d=""></path>
+                </g>
+
+                <g id="surfaceGroup" clip-path="url(#clip-rect-mask)" style="display: none;">
+                    <path class="shape-surface" id="pathSurface" d=""></path>
+                </g>
+
+                <circle id="guideDot" class="guide-dot" cx="0" cy="0" r="10"></circle>
+            </svg>
+
+            <div class="progress-bar-container" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+        </main>
+
+        <div class="controls-wrapper">
+            <div class="controls">
+                <button class="icon-btn" onclick="resetApp()" title="홈으로">🧶</button>
+                <button class="icon-btn" onclick="takePhoto()" title="찰칵">📷</button>
+                <button class="icon-btn" onclick="openDiary()" title="다이어리">📖</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="overlay" id="photoModal"><button class="close-btn" onclick="closeModal('photoModal')">×</button><div class="polaroid-frame"><div class="polaroid-photo-area" id="photoArea"><img id="polaroidImg" class="polaroid-img" src=""></div><div class="polaroid-caption" id="polaroidCaption"></div></div></div>
+    <div class="overlay" id="diaryModal"><button class="close-btn" onclick="closeModal('diaryModal')">×</button><div class="diary-container" id="diaryContainer"><div class="diary-title">My Looply Diary</div></div></div>
+
+    <script>
+        const videoElement = document.querySelector('.input_video'); const canvasElement = document.getElementById('canvasElement'); const canvasCtx = canvasElement.getContext('2d');
+        const statusText = document.getElementById('statusText'); const selectionScreen = document.getElementById('selectionScreen'); const progressBar = document.getElementById('progressBar'); const progressFill = document.getElementById('progressFill');
+        
+        const svgContainer = document.getElementById('svgContainer');
+        const guideDot = document.getElementById('guideDot');
+        
+        const strokeGroup = document.getElementById('strokeGroup');
+        const maskPath = document.getElementById('maskPath');
+        const strokePaths = [document.getElementById('pathYarnBase'), document.getElementById('pathYarnTwist'), document.getElementById('pathYarnHilite')];
+        
+        const surfaceGroup = document.getElementById('surfaceGroup');
+        const pathSurface = document.getElementById('pathSurface');
+        const pathGuideOutline = document.getElementById('pathGuideOutline');
+        const clipRect = document.getElementById('clip-rect');
+
+        let loopCount = 0; let targetLoops = 0; let currentItemType = ""; let currentItemName = "";
+        let isCrossed = false; let camera = null; let isPlaying = false;
+        let isWaitingForTurn = false; let rowLength = 0; let isFlipped = false; let pathTotalLength = 0;
+
+        const itemsConfig = {
+            coaster: {
+                name: '☕ 나의 티코스터', mode: 'stroke', loops: 20,
+                path: "M 175 175 Q 190 175 190 190 Q 190 205 175 205 Q 145 205 145 175 Q 145 135 175 135 Q 215 135 215 175 Q 215 225 175 225 Q 125 225 125 175 Q 125 115 175 115 Q 235 115 235 175"
+            },
+            glove: {
+                name: '🧤 겨울 장갑', mode: 'surface', loops: 50,
+                path: "M 130 320 L 130 180 C 130 100, 220 100, 220 180 L 220 200 C 280 200, 280 260, 220 260 L 220 320 Z",
+                rowLength: 5, minX: 130, maxX: 220, minY: 100, maxY: 320 
+            },
+            muffler: {
+                name: '🧣 롱 목도리', mode: 'surface', loops: 100,
+                path: "M 100 40 L 250 40 L 250 330 L 100 330 Z",
+                rowLength: 10, minX: 100, maxX: 250, minY: 40, maxY: 330
+            }
+        };
+
+        function resizeCanvas() { canvasElement.width = window.innerWidth; canvasElement.height = window.innerHeight; }
+        window.addEventListener('resize', resizeCanvas); resizeCanvas();
+
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 }); hands.onResults(onResults);
+
+        function startGame(type) {
+            const config = itemsConfig[type];
+            currentItemType = type; targetLoops = config.loops; loopCount = 0; currentItemName = config.name;
+            progressFill.style.width = '0%'; isWaitingForTurn = false; isFlipped = false;
+            svgContainer.style.transform = 'scaleX(1)'; 
+            
+            rowLength = config.mode === 'surface' ? config.rowLength : 0;
+            pathGuideOutline.setAttribute('d', config.path);
+
+            if (config.mode === 'stroke') {
+                strokeGroup.style.display = 'block';
+                surfaceGroup.style.display = 'none';
+                maskPath.setAttribute('d', config.path);
+                strokePaths.forEach(p => p.setAttribute('d', config.path));
+                pathTotalLength = maskPath.getTotalLength();
+                maskPath.style.strokeDasharray = pathTotalLength;
+                maskPath.style.strokeDashoffset = pathTotalLength;
+            } else {
+                strokeGroup.style.display = 'none';
+                surfaceGroup.style.display = 'block';
+                pathSurface.setAttribute('d', config.path);
+                clipRect.setAttribute('y', 350);
+                clipRect.setAttribute('height', 0);
+            }
+
+            updateGuideDot(0); 
+
+            svgContainer.classList.remove('completed-pulse'); selectionScreen.style.opacity = '0';
+            setTimeout(() => { 
+                selectionScreen.style.display = 'none'; statusText.style.display = 'block'; progressBar.style.display = 'block'; svgContainer.style.display = 'block';
+                statusText.innerHTML = "두 바늘(검지)을 X자로 교차했다가<br>당겨서 코를 빼보세요.";
+            }, 500);
+
+            if (!camera) camera = new Camera(videoElement, { onFrame: async () => { if(isPlaying) await hands.send({image: videoElement}); }, width: 1280, height: 720 });
+            isPlaying = true; camera.start();
+        }
+
+        function resetApp() {
+            isPlaying = false; if(camera) camera.stop();
+            selectionScreen.style.display = 'flex'; setTimeout(() => { selectionScreen.style.opacity = '1'; }, 50);
+            statusText.style.display = 'none'; progressBar.style.display = 'none'; svgContainer.style.display = 'none';
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        }
+
+        function updateGuideDot(loop) {
+            if (loop >= targetLoops) {
+                guideDot.style.display = 'none';
+                return;
+            }
+            guideDot.style.display = 'block';
+            const config = itemsConfig[currentItemType];
+
+            if (config.mode === 'stroke') {
+                const progressRatio = loop / targetLoops;
+                const currentLen = pathTotalLength * progressRatio;
+                const point = maskPath.getPointAtLength(currentLen);
+                guideDot.setAttribute('cx', point.x);
+                guideDot.setAttribute('cy', point.y);
+            } else {
+                const totalRows = targetLoops / config.rowLength;
+                const currentRow = Math.floor(loop / config.rowLength);
+                const stitchInRow = loop % config.rowLength;
+                const rowHeight = (config.maxY - config.minY) / totalRows;
+                const cy = config.maxY - (currentRow * rowHeight) - (rowHeight / 2);
+                const ratio = stitchInRow / (config.rowLength - 1 || 1); 
+                const cx = config.minX + (config.maxX - config.minX) * ratio;
+                guideDot.setAttribute('cx', cx);
+                guideDot.setAttribute('cy', cy);
+            }
+        }
+
+        function onResults(results) {
+            canvasCtx.save(); canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.globalAlpha = 0.15; canvasCtx.filter = 'grayscale(100%) contrast(1.2)';
+            if(results.image) canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.filter = 'none'; canvasCtx.globalAlpha = 1.0;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2 && loopCount < targetLoops) {
+                const hand1 = results.multiHandLandmarks[0]; const hand2 = results.multiHandLandmarks[1];
+                const h1Index = hand1[8]; const h2Index = hand2[8];
+                const h1X = h1Index.x * canvasElement.width; const h1Y = h1Index.y * canvasElement.height;
+                const h2X = h2Index.x * canvasElement.width; const h2Y = h2Index.y * canvasElement.height;
+                const handsDistance = Math.sqrt(Math.pow(h1Index.x - h2Index.x, 2) + Math.pow(h1Index.y - h2Index.y, 2));
+                const midX = (h1X + h2X) / 2; const midY = (h1Y + h2Y) / 2;
+                svgContainer.style.top = (midY - 25) + 'px'; svgContainer.style.left = (midX - 175) + 'px';
+
+                if (isWaitingForTurn) {
+                    if (Math.sqrt(Math.pow(hand1[0].x - hand2[0].x, 2) + Math.pow(hand1[0].y - hand2[0].y, 2)) < 0.15) {
+                        isWaitingForTurn = false; isFlipped = !isFlipped;
+                        svgContainer.style.transform = isFlipped ? 'scaleX(-1)' : 'scaleX(1)';
+                        statusText.innerHTML = "편물을 뒤집었어요! ✨<br>다시 바늘을 교차하여 엮어주세요.";
+                        setTimeout(() => { if(!isWaitingForTurn) statusText.innerHTML = `아름다운 리듬이에요.<br><b>${loopCount} / ${targetLoops}</b> 코`; }, 2500);
+                    }
+                } 
+                else {
+                    drawNeedle(canvasCtx, hand1); drawNeedle(canvasCtx, hand2);
+                    if (handsDistance < 0.05) {
+                        isCrossed = true;
+                        statusText.innerHTML = "실이 걸렸어요.<br>양옆으로 바늘을 당겨주세요.";
+                        drawTripleYarnPath(canvasCtx, h1X, h1Y, h2X, h2Y, (h1X + h2X) / 2, (h1Y + h2Y) / 2, true);
+                    } 
+                    else if (isCrossed && handsDistance > 0.15) {
+                        loopCount++; isCrossed = false;
+                        const progress = loopCount / targetLoops;
+                        progressFill.style.width = `${progress * 100}%`;
+                        
+                        if (itemsConfig[currentItemType].mode === 'stroke') { maskPath.style.strokeDashoffset = pathTotalLength - (pathTotalLength * progress); } 
+                        else { clipRect.setAttribute('y', 350 - (350 * progress)); clipRect.setAttribute('height', 350 * progress); }
+                        
+                        updateGuideDot(loopCount);
+                        if (rowLength > 0 && loopCount % rowLength === 0 && loopCount < targetLoops) {
+                            isWaitingForTurn = true;
+                            statusText.innerHTML = `한 단이 끝났어요!<br><span class="highlight-text">양손목을 교차하여 편물을 뒤집어주세요 🔄</span>`;
+                        } else { statusText.innerHTML = `아름다운 리듬이에요.<br><b>${loopCount} / ${targetLoops}</b> 코`; }
+                        const cpY = (h1Y + h2Y) / 2 + Math.max(0, canvasElement.height * 0.4 * (0.2 - handsDistance));
+                        drawTripleYarnPath(canvasCtx, h1X, h1Y, h2X, h2Y, (h1X + h2X) / 2, cpY, false);
+                    } else {
+                        const cpY = (h1Y + h2Y) / 2 + Math.max(0, canvasElement.height * 0.4 * (0.2 - handsDistance));
+                        drawTripleYarnPath(canvasCtx, h1X, h1Y, h2X, h2Y, (h1X + h2X) / 2, cpY, false);
+                    }
+                    drawTripleYarnPath(canvasCtx, 0, h1Y, h1X, h1Y, h1X / 2, h1Y + 150, false);
+                    drawTripleYarnPath(canvasCtx, canvasElement.width, h2Y, h2X, h2Y, (canvasElement.width + h2X) / 2, h2Y + 150, false);
+                }
+            } else if (loopCount >= targetLoops && targetLoops > 0) {
+                statusText.innerHTML = "✨ <b>looply</b> ✨<br>포근한 나의 세계가 완성되었어요!";
+                progressFill.style.width = '100%'; guideDot.style.display = 'none';
+                svgContainer.classList.add('completed-pulse');
+            } else {
+                if(isWaitingForTurn) statusText.innerHTML = `<span class="highlight-text">양손목을 교차하여 편물을 뒤집어주세요 🔄</span>`;
+                else statusText.innerHTML = "양손을 화면에 보여주세요.<br>(두 검지를 뻗어 바늘처럼 사용하세요)";
+            }
+            canvasCtx.restore();
+        }
+
+        function drawNeedle(ctx, landmarks) {
+            const indexTip = landmarks[8]; const indexMcp = landmarks[5];
+            const startX = indexTip.x * canvasElement.width; const startY = indexTip.y * canvasElement.height;
+            const mcpX = indexMcp.x * canvasElement.width; const mcpY = indexMcp.y * canvasElement.height;
+            let dx = startX - mcpX; let dy = startY - mcpY; const length = Math.sqrt(dx*dx + dy*dy);
+            const endX = startX + (dx/length) * 160; const endY = startY + (dy/length) * 160;
+            ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.strokeStyle = '#C19A6B'; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.stroke(); ctx.beginPath(); ctx.arc(endX, endY, 10, 0, Math.PI * 2); ctx.fillStyle = '#8B5A2B'; ctx.fill(); ctx.shadowColor = 'transparent';
+        }
+
+        function drawTripleYarnPath(ctx, x1, y1, x2, y2, cpX, cpY, crossed) {
+            ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 15; ctx.shadowOffsetY = 8; ctx.beginPath(); ctx.moveTo(x1, y1); if(crossed) ctx.lineTo(x2, y2); else ctx.quadraticCurveTo(cpX, cpY, x2, y2); ctx.strokeStyle = '#1A1A1A'; ctx.lineWidth = 24; ctx.lineCap = 'round'; ctx.stroke(); ctx.shadowColor = 'transparent'; ctx.beginPath(); ctx.moveTo(x1, y1); if(crossed) ctx.lineTo(x2, y2); else ctx.quadraticCurveTo(cpX, cpY, x2, y2); ctx.strokeStyle = '#383838'; ctx.lineWidth = 18; ctx.setLineDash([8, 12]); ctx.stroke(); ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(x1, y1); if(crossed) ctx.lineTo(x2, y2); else ctx.quadraticCurveTo(cpX, cpY, x2, y2); ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 4; ctx.stroke();
+        }
+
+        function takePhoto() {
+            if(!isPlaying) return; const modal = document.getElementById('photoModal'); const img = document.getElementById('polaroidImg'); const caption = document.getElementById('polaroidCaption'); const photoArea = document.getElementById('photoArea');
+            const dataUrl = canvasElement.toDataURL('image/png'); img.src = dataUrl;
+            const oldClone = photoArea.querySelector('svg'); if(oldClone) oldClone.remove();
+            const svgClone = svgContainer.cloneNode(true); svgClone.style.display = 'block'; svgClone.style.position = 'absolute'; svgClone.style.top = '50%'; svgClone.style.left = '50%'; svgClone.style.transform = 'translate(-50%, -50%)'; photoArea.appendChild(svgClone);
+            const today = new Date(); const dateStr = `${today.getFullYear()}.${String(today.getMonth()+1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
+            const captionText = `${dateStr} ${currentItemName}`; caption.innerText = captionText;
+            let diaryItems = JSON.parse(localStorage.getItem('looply_diary')) || []; diaryItems.push({ id: Date.now(), imgUrl: dataUrl, text: captionText }); localStorage.setItem('looply_diary', JSON.stringify(diaryItems));
+            modal.style.display = 'flex'; setTimeout(() => { modal.classList.add('show'); }, 10);
+        }
+
+        function openDiary() {
+            const modal = document.getElementById('diaryModal'); const container = document.getElementById('diaryContainer');
+            container.innerHTML = '<div class="diary-title">My Looply Diary</div>';
+            const diaryItems = JSON.parse(localStorage.getItem('looply_diary')) || [];
+            if (diaryItems.length === 0) container.innerHTML += `<div class="empty-diary">아직 엮어낸 기록이 없어요.<br>나만의 첫 작품을 완성하고 사진을 남겨보세요.</div>`;
+            else { diaryItems.reverse().forEach(item => { const div = document.createElement('div'); div.className = 'diary-item'; div.innerHTML = `<img src="${item.imgUrl}" alt="diary"><div class="caption">${item.text}</div>`; container.appendChild(div); }); }
+            modal.style.display = 'flex'; setTimeout(() => { modal.classList.add('show'); }, 10);
+        }
+        function closeModal(id) { const modal = document.getElementById(id); modal.classList.remove('show'); setTimeout(() => { modal.style.display = 'none'; }, 400); }
+    </script>
+</body>
+</html>

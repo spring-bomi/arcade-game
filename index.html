@@ -16,17 +16,17 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            min-height: 80vh;
+            min-height: 100vh;
         }
 
-        /* 게임 포털을 감싸는 귀여운 게임기 모양의 박스 */
+        /* 게임 포털을 감싸는 박스 */
         .container {
             background-color: #ffffff;
             border: 4px solid #333333;
             border-radius: 20px;
             box-shadow: 8px 8px 0px #e0dbcd;
             padding: 40px 30px;
-            max-width: 480px;
+            max-width: 540px;
             width: 100%;
             text-align: center;
             box-sizing: border-box;
@@ -40,16 +40,34 @@
             margin-bottom: 10px;
             word-break: keep-all;
             display: inline-block;
-            background: linear-gradient(to top, #ffe596 40%, transparent 40%); /* 텍스트 강조 밑줄 효과 */
+            background: linear-gradient(to top, #ffe596 40%, transparent 40%);
             padding: 0 5px;
         }
 
         /* 안내 문구 */
-        p {
+        p.subtitle {
             font-size: 1rem;
             color: #666666;
             margin-bottom: 35px;
             font-weight: 500;
+        }
+
+        /* -------------------------------------
+           📂 카테고리 구역 스타일
+        ------------------------------------- */
+        .category-section {
+            text-align: left;
+            margin-bottom: 35px;
+        }
+
+        /* 카테고리 제목 (소제목) */
+        .category-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #333333;
+            margin-bottom: 12px;
+            padding-left: 8px;
+            border-left: 4px solid #333333;
         }
 
         /* 리스트 스타일 초기화 */
@@ -59,7 +77,7 @@
             margin: 0;
             display: flex;
             flex-direction: column;
-            gap: 16px; /* 버튼 간격 */
+            gap: 10px; /* 버튼 간격 */
         }
 
         li {
@@ -70,75 +88,90 @@
         ul li a {
             display: block;
             text-decoration: none;
-            font-size: 1.1rem;
+            font-size: 0.95rem;
             font-weight: bold;
             color: #333333;
-            background-color: #f0f7ff; /* 부드러운 하늘색 */
-            padding: 16px 20px;
+            background-color: #f0f7ff;
+            padding: 12px 16px;
             border: 3px solid #333333;
             border-radius: 12px;
-            box-shadow: 0px 5px 0px #333333; /* 입체감 있는 아케이드 버튼 느낌 */
+            box-shadow: 0px 4px 0px #333333;
             transition: all 0.1s ease;
-            text-align: left;
-            position: relative;
-            padding-left: 50px;
         }
+
+        /* 카테고리별 버튼 색상 */
+        .kiosk-list a { background-color: #fff2cc; } /* 연한 노랑 */
+        .mobile-list a { background-color: #e1f5fe; } /* 연한 파랑 */
+        .multi-list a { background-color: #e8f5e9; }  /* 연한 초록 */
 
         /* 버튼 마우스 올렸을 때 효과 */
         ul li a:hover {
-            background-color: #e1f0ff;
+            filter: brightness(0.95);
             transform: translateY(-2px);
-            box-shadow: 0px 7px 0px #333333;
+            box-shadow: 0px 6px 0px #333333;
         }
 
         /* 버튼을 눌렀을 때 쏙 들어가는 효과 */
         ul li a:active {
-            transform: translateY(5px);
+            transform: translateY(4px);
             box-shadow: 0px 0px 0px #333333;
         }
 
-        /* 게임 번호 아이콘 디자인 */
-        ul li a::before {
-            position: absolute;
-            left: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 24px;
-            height: 24px;
-            background-color: #333333;
-            color: #ffffff;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.85rem;
-        }
-
-        /* 각 버튼에 순서대로 번호 부여 */
-        ul li:nth-child(1) a::before { content: "1"; }
-        ul li:nth-child(2) a::before { content: "2"; }
-        ul li:nth-child(3) a::before { content: "3"; }
-
-        /* 하단 푸터 느낌의 아기자기한 장식 */
+        /* 하단 장식 */
         .footer-deco {
-            margin-top: 30px;
+            margin-top: 20px;
             font-size: 1.2rem;
             letter-spacing: 5px;
             color: #ccc;
+            text-align: center;
         }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>🎮 아케이드 게임 모음_보미ver 🎮</h1>
-        <p>플레이할 게임을 선택하세요!</p>
+        <h1>🎮 아케이드 게임 모음_보미 🎮</h1>
+        <p class="subtitle">원하는 카테고리의 게임을 선택하세요!</p>
 
-        <ul>
-            <li><a href="shopping-cart/index.html">쇼핑카트 중심잡기</a></li>
-            <li><a href="chopstick/index.html">젓가락 마스터</a></li>
-            <li><a href="card-shuffle/index.html">카드 맞추기</a></li>
-        </ul>
+        <div class="category-section">
+            <div class="category-title">🖥️ 키오스크용 게임</div>
+            <ul class="kiosk-list">
+                <li><a href="shopping-cart/index.html">🛒 쇼핑카트 중심잡기</a></li>
+                <li><a href="archery/index.html">🎯 양궁 (archery)</a></li>
+                <li><a href="box-slashing/index.html">📦 박스 슬래싱 (box-slashing)</a></li>
+                <li><a href="dudurge-slap/index.html">🔨 두더지 잡기 (dudurge-slap)</a></li>
+                <li><a href="goldbar-catch/index.html">💰 금괴 잡기 (goldbar-catch)</a></li>
+                <li><a href="looply/index.html">🔄 루플리 (looply)</a></li>
+                <li><a href="magic-dart/index.html">🦅 매직 다트 (magic-dart)</a></li>
+                <li><a href="random-string/index.html">🧵 랜덤 스트링 (random-string)</a></li>
+                <li><a href="shake-cocktail/index.html">🍸 칵테일 쉐이크 (shake-cocktail)</a></li>
+                <li><a href="table-flick/index.html">🥏 테이블 플릭 (table-flick)</a></li>
+                <li><a href="time-clap/index.html">👏 타임 클랩 (time-clap)</a></li>
+		<li><a href="chopstick/index.html">🥢 젓가락 마스터</a></li>
+		<li><a href="card-shuffle/index.html">🃏 카드 맞추기</a></li>
+            </ul>
+        </div>
+
+        <div class="category-section">
+            <div class="category-title">📱 모바일용 게임 (추가 아이디어)</div>
+            <ul class="mobile-list">
+                <li><a href="pinger-gun/index.html">🔫 핑거 건 (pinger-gun)</a></li>
+                <li><a href="swipe/index.html">👆 스와이프 (swipe)</a></li>
+                <li><a href="slingshot/index.html">🏹 슬링샷 (slingshot)</a></li>
+                <li><a href="claw-Machine/index.html">🕹️ 인형 뽑기 (claw-Machine)</a></li>
+                <li><a href="block-obstacles/index.html">🧱 장애물 막기 (block-obstacles)</a></li>
+                <li><a href="handle/index.html">🎡 핸들 돌리기 (handle)</a></li>
+                <li><a href="arrow/index.html">⬇️ 화살표 (arrow)</a></li>
+            </ul>
+        </div>
+
+        <div class="category-section">
+            <div class="category-title">👥 멀티 플레이 게임</div>
+            <ul class="multi-list">
+                <li><a href="neon-hockey/index.html">🏒 네온 하키 (neon-hockey)</a></li>
+                <li><a href="jenga/index.html">🪵 젠가 (jenga)</a></li>
+            </ul>
+        </div>
         
         <div class="footer-deco">🕹️ 🔴 🟡 🔵</div>
     </div>

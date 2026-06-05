@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>아케이드 런게임 - 네온 러너 (Neon Runner)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0; padding: 0;
+            background-color: #03030c;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px; height: 600px;
+            box-shadow: 0 0 40px rgba(240, 0, 255, 0.25);
+            border: 3px solid #f0f; /* 마젠타 네온 테두리 */
+            border-radius: 16px;
+            overflow: hidden;
+            background: #060618;
+        }
+
+        canvas {
+            display: block;
+            width: 100%; height: 100%;
+        }
+
+        /* 컨트롤 가이드 인디케이터 */
+        #hand-debug {
+            position: absolute;
+            bottom: 20px; left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            border: 1px solid #0ff;
+            color: #0ff;
+            font-family: monospace;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        /* UI 레이어 */
+        .ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex; flex-direction: column; justify-content: space-between;
+            padding: 25px; box-sizing: border-box;
+            z-index: 4;
+        }
+
+        .score-box {
+            font-size: 32px; font-weight: 900; color: #0ff;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+        }
+
+        /* 화면 오버레이 스크린 */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 5, 15, 0.9);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 10;
+            gap: 15px;
+        }
+
+        .overlay h1 {
+            font-size: 52px; margin: 0; color: #f0f;
+            text-shadow: 0 0 20px #f0f;
+            letter-spacing: 2px;
+        }
+
+        .overlay p {
+            font-size: 16px; color: #a0a0c0; text-align: center; line-height: 1.6;
+        }
+
+        .btn {
+            padding: 12px 40px; font-size: 20px; font-weight: bold;
+            background: linear-gradient(45deg, #f0f, #0ff);
+            border: none; border-radius: 30px; color: white;
+            cursor: pointer; pointer-events: auto;
+            box-shadow: 0 0 15px #f0f;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px #0ff;
+        }
+
+        .loader {
+            width: 45px; height: 45px;
+            border: 4px solid #1a1a3a; border-top: 4px solid #f0f;
+            border-radius: 50%; animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <video id="webcam" width="640" height="480" autoplay playsinline style="display:none;"></video>
+
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+        <div id="hand-debug">HAND: DETECTING...</div>
+
+        <div class="ui-layer">
+            <div class="score-box">SCORE: <span id="score">0</span></div>
+            <div style="color: #666; font-size: 12px;">키보드 백업 조작: 방향키(좌우), 스페이스바(점프)</div>
+        </div>
+
+        <div id="screen-loading" class="overlay">
+            <div class="loader"></div>
+            <h1>TRACKING INIT</h1>
+            <p>카메라 연결 및 핸드트래킹 연산 모델을 불러오고 있습니다.</p>
+        </div>
+
+        <div id="screen-start" class="overlay hidden">
+            <h1>NEON RUNNER</h1>
+            <p>손바닥을 편 채로 <strong>왼쪽/오른쪽으로 비틀면(Tilt)</strong> 차선이 변경되며,<br>화면 앞을 향해 <strong>밀치면(Push)</strong> 앞으로 1칸 점프 전진합니다!</p>
+            <button class="btn" onclick="startGame()">RUN START</button>
+        </div>
+
+        <div id="screen-gameover" class="overlay hidden">
+            <h1>CRASHED</h1>
+            <p>장애물에 충돌했습니다!<br>최종 진행 점수: <span id="final-score" style="color:#0ff; font-weight:bold;">0</span></p>
+            <button class="btn" onclick="startGame()">RETRY</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('webcam');
+        const debugUI = document.getElementById('hand-debug');
+
+        // 게임 핵심 상태 변수
+        let gameState = 'LOADING'; 
+        let score = 0;
+        let highestRow = 0;
+        
+        // 의사 쿼터뷰(Isometric) 공간 정의용 백터 기본값
+        const isoVectorX = { x: 45, y: 18 };  // 차선(좌우) 배치 벡터
+        const isoVectorY = { x: 35, y: -22 }; // 도로(앞뒤) 배치 벡터
+
+        // 플레이어 오브젝트
+        const player = {
+            lane: 1,       // 현재 차선 (0:왼쪽, 1:중앙, 2:오른쪽)
+            row: 0,        // 현재 맵 타일 라인 위치
+            visualLane: 1, // 부드러운 연출용 보간 변수
+            visualRow: 0,
+            jumpY: 0,      // 점프 시 공중 높이 구현용
+            jumpAnim: 0    // 점프 애니메이션 타임라인
+        };
+
+        // 맵 구조 및 장애물 관리
+        let mapRows = [];
+        let particles = [];
+        const maxVisibleRows = 22;
+
+        // 핸드 트래킹 가변 분석 필터
+        let handStatus = { tilt: 'CENTER', size: 0, angle: -90 };
+        let handSizeHistory = [];
+        let jumpCooldown = 0;
+
+        // --- 1. MediaPipe Hands 인스턴스 초기화 ---
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.65,
+            minTrackingConfidence: 0.65
+        });
+
+        hands.onResults(onHandTrackingResults);
+
+        // 카메라 구동
+        navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+        .then((stream) => {
+            videoElement.srcObject = stream;
+            const camera = new Camera(videoElement, {
+                onFrame: async () => { await hands.send({ image: videoElement }); },
+                width: 640, height: 480
+            });
+            camera.start();
+            
+            document.getElementById('screen-loading').classList.add('hidden');
+            document.getElementById('screen-start').classList.remove('hidden');
+            gameState = 'START';
+        })
+        .catch((err) => {
+            console.warn("카메라 감지 안 됨 - 키보드 모드로 전환합니다.");
+            document.getElementById('screen-loading').classList.add('hidden');
+            document.getElementById('screen-start').classList.remove('hidden');
+            gameState = 'START';
+        });
+
+        // --- 2. 제스처 핵심 판정 연산 ---
+        function onHandTrackingResults(results) {
+            if (gameState !== 'PLAYING') return;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // 좌우 반전 거울모드 보정 좌표계 형성
+                const lm = landmarks.map(p => ({ x: 1 - p.x, y: p.y }));
+
+                // [A] 기울기(Tilt) 연산: 손목(0번) -> 중지 뿌리마디(9번) 벡터 활용
+                const dx = lm[9].x - lm[0].x;
+                const dy = lm[9].y - lm[0].y;
+                let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                handStatus.angle = angle;
+
+                // 차선 변경 제어 트리거 설정 (-90도 수직 기준)
+                if (angle < -106) {
+                    handStatus.tilt = 'LEFT';
+                    player.lane = 0;
+                } else if (angle > -74) {
+                    handStatus.tilt = 'RIGHT';
+                    player.lane = 2;
+                } else {
+                    handStatus.tilt = 'CENTER';
+                    player.lane = 1;
+                }
+
+                // [B] 밀기(Push) 연산: 손목(0)과 중지뿌리(9) 사이의 모니터 공간 내 픽셀 거리 측정
+                const currentSize = Math.hypot(lm[9].x - lm[0].x, lm[9].y - lm[0].y) * 1000;
+                handStatus.size = currentSize;
+
+                // 유동적 베이스라인 구축용 이동평균 필터링
+                handSizeHistory.push(currentSize);
+                if (handSizeHistory.length > 12) handSizeHistory.shift();
+
+                const avgSize = handSizeHistory.reduce((a, b) => a + b, 0) / handSizeHistory.length;
+
+                // 쿨다운 상태가 아니며, 평소 크기 대비 24% 이상 순간 확장될 때 Push 돌파 판정
+                if (jumpCooldown === 0 && currentSize > avgSize * 1.24 && handSizeHistory.length >= 10) {
+                    triggerJumpForward();
+                }
+
+                debugUI.innerText = `TILT: ${handStatus.tilt} (${Math.round(angle)}°) | PUSH_SIZE: ${Math.round(currentSize)} / AVG: ${Math.round(avgSize)}`;
+            } else {
+                debugUI.innerText = `HAND: NOT DETECTED`;
+            }
+        }
+
+        // --- 3. 키보드 인터랙션 지원 (백업 스위치) ---
+        window.addEventListener('keydown', (e) => {
+            if (gameState !== 'PLAYING') return;
+            if (e.key === 'ArrowLeft') player.lane = Math.max(0, player.lane - 1);
+            if (e.key === 'ArrowRight') player.lane = Math.min(2, player.lane + 1);
+            if (e.key === ' ' || e.key === 'ArrowUp') triggerJumpForward();
+        });
+
+        function triggerJumpForward() {
+            player.row++;
+            player.jumpAnim = 1.0; // 애니메이션 구동 신호
+            jumpCooldown = 20;     // 연속 입력 방지 프레임 버퍼
+            
+            if (player.row > highestRow) {
+                highestRow = player.row;
+                score = highestRow * 10;
+                document.getElementById('score').innerText = score;
+            }
+        }
+
+        // --- 4. 맵 무작위 생성 알고리즘 ---
+        function generateRow(rowIndex) {
+            // 초기 출발 지점 4칸은 안전지대 고정
+            let type = 'SAFE';
+            if (rowIndex > 4) {
+                type = Math.random() < 0.65 ? 'ROAD' : 'SAFE';
+            }
+
+            const rowObj = {
+                index: rowIndex,
+                type: type,
+                color: type === 'SAFE' ? '#161233' : '#090914',
+                edgeColor: type === 'SAFE' ? '#ff00aa' : '#00ffff',
+                obstacles: []
+            };
+
+            // 차선 도로 위 장애물 자동차 주입
+            if (type === 'ROAD') {
+                const speed = (Math.random() * 0.04 + 0.02) * (Math.random() < 0.5 ? 1 : -1);
+                const carColor = speed > 0 ? '#ff3366' : '#ff9900';
+                
+                // 해당 도로 라인에 임의의 간격으로 차량 1~2대 배치
+                rowObj.obstacles.push({ pos: Math.random() * 3, speed: speed, color: carColor });
+                if (Math.random() < 0.4) {
+                    rowObj.obstacles.push({ pos: (Math.random() * 3 + 1.5) % 3, speed: speed, color: carColor });
+                }
+            }
+            return rowObj;
+        }
+
+        // --- 5. 의사 쿼터뷰 월드 투영 공식 ---
+        function getIsoProjection(lane, row) {
+            const laneOffset = lane - 1; // -1, 0, 1 차선 센터 정렬화
+            const rowOffset = row - player.visualRow;
+
+            // 월드 기준점 중앙 및 플레이어 시점 추적 중심 설계
+            const screenX = canvas.width / 2 + (laneOffset * isoVectorX.x) + (rowOffset * isoVectorY.x);
+            const screenY = canvas.height * 0.68 + (laneOffset * isoVectorX.y) + (rowOffset * isoVectorY.y);
+            return { x: screenX, y: screenY };
+        }
+
+        // 쿼터뷰 입체 블록(Box) 그리기 함수
+        function drawIsoBox(lane, row, height, topColor, leftColor, rightColor) {
+            const base = getIsoProjection(lane, row);
+            const w = isoVectorX.x / 2;
+            const h = isoVectorX.y / 2;
+            const rW = isoVectorY.x / 2;
+            const rH = isoVectorY.y / 2;
+
+            // 바닥면 기준 8지점 버텍스 조합 변환 연산 생략 후 간이 경로 드로잉
+            // 상단 뚜껑 레이어 계산
+            const ty = base.y - height;
+
+            // 1. Top Face
+            ctx.fillStyle = topColor;
+            ctx.beginPath();
+            ctx.moveTo(base.x, ty);
+            ctx.lineTo(base.x + w, ty + h);
+            ctx.lineTo(base.x + w + rW, ty + h + rH);
+            ctx.lineTo(base.x + rW, ty + rH);
+            ctx.closePath();
+            ctx.fill();
+
+            // 2. Left Side Face
+            ctx.fillStyle = leftColor;
+            ctx.beginPath();
+            ctx.moveTo(base.x, ty);
+            ctx.lineTo(base.x + w, ty + h);
+            ctx.lineTo(base.x + w, base.y + h);
+            ctx.lineTo(base.x, base.y);
+            ctx.closePath();
+            ctx.fill();
+
+            // 3. Right Side Face
+            ctx.fillStyle = rightColor;
+            ctx.beginPath();
+            ctx.moveTo(base.x + w, ty + h);
+            ctx.lineTo(base.x + w + rW, ty + h + rH);
+            ctx.lineTo(base.x + w + rW, base.y + h + rH);
+            ctx.lineTo(base.x + w, base.y + h);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // --- 6. 루프 및 제어 상태 관리 ---
+        function startGame() {
+            score = 0; highestRow = 0;
+            player.lane = 1; player.row = 0;
+            player.visualLane = 1; player.visualRow = 0;
+            player.jumpY = 0; player.jumpAnim = 0;
+            
+            mapRows = []; particles = [];
+            for (let i = 0; i < maxVisibleRows; i++) {
+                mapRows.push(generateRow(i));
+            }
+
+            document.getElementById('screen-start').classList.add('hidden');
+            document.getElementById('screen-gameover').classList.add('hidden');
+            document.getElementById('score').innerText = score;
+            gameState = 'PLAYING';
+        }
+
+        function triggerGameOver() {
+            gameState = 'GAMEOVER';
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('screen-gameover').classList.remove('hidden');
+        }
+
+        // 메인 프레임 틱 인터벌 루프
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameState === 'PLAYING') {
+                if (jumpCooldown > 0) jumpCooldown--;
+
+                // 플레이어 카메라 및 포지션 변수 유연한 보간(Lerp) 적용
+                player.visualLane += (player.lane - player.visualLane) * 0.22;
+                player.visualRow += (player.row - player.visualRow) * 0.18;
+
+                // 점프 포물선 물리 수식 제어
+                if (player.jumpAnim > 0) {
+                    player.jumpAnim -= 0.08;
+                    // 포물선 방정식 H = sin(pi * t) * MaxHeight
+                    player.jumpY = Math.sin((1.0 - player.jumpAnim) * Math.PI) * 35;
+                    if (player.jumpAnim <= 0) {
+                        player.jumpAnim = 0;
+                        player.jumpY = 0;
+                    }
+                }
+
+                // 신규 타일 라인 실시간 동적 빌드업 구조 관리
+                while (mapRows[mapRows.length - 1].index < player.row + maxVisibleRows) {
+                    mapRows.push(generateRow(mapRows[mapRows.length - 1].index + 1));
+                }
+                // 퍼포먼스 확보용 하단 이탈 타일 파괴 거름망
+                if (mapRows[0].index < player.row - 5) {
+                    mapRows.shift();
+                }
+
+                // [렌더링 1단계] 맵 그리드 바닥 및 차선, 도로 오브젝트 출력
+                mapRows.forEach((row) => {
+                    // 3개 차선 블록 그리기
+                    for (let l = 0; l < 3; l++) {
+                        let isPlayerCell = (row.index === player.row && l === player.lane);
+                        
+                        // 네온 스타일 면 색상 지정
+                        let tCol = row.color;
+                        let lCol = '#02020a';
+                        let rCol = '#040412';
+
+                        drawIsoBox(l, row.index, 8, tCol, lCol, rCol);
+
+                        // 블록 테두리 선 래핑 (네온 라이팅 레이아웃 효과)
+                        const p = getIsoProjection(l, row.index);
+                        ctx.strokeStyle = row.edgeColor;
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(p.x - 2, p.y - 2, 4, 4); // 단순 지점 가이드 라인화 대체 가능
+                    }
+
+                    // 도로 위 장애물 자동차 포지션 연산 및 드로잉
+                    if (row.type === 'ROAD') {
+                        row.obstacles.forEach((car) => {
+                            car.pos += car.speed;
+                            // 도로 이탈 시 루핑 순환 구조 변환
+                            if (car.pos > 3) car.pos = 0;
+                            if (car.pos < 0) car.pos = 3;
+
+                            // 자동차 블록 드로잉
+                            drawIsoBox(car.pos, row.index, 18, car.color, '#200010', '#400020');
+
+                            // 충돌 판정 검사 (플레이어와 동일 행 구역 진입 시 정밀 반경 체크)
+                            if (row.index === player.row) {
+                                if (Math.abs(car.pos - player.visualLane) < 0.42 && player.jumpY < 12) {
+                                    // 대형 크래시 이펙트 파티클 분출 생성
+                                    for(let k=0; k<25; k++) {
+                                        particles.push({
+                                            x: canvas.width/2, y: canvas.height*0.65,
+                                            vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10 - 5,
+                                            alpha: 1, color: '#00ffff'
+                                        });
+                                    }
+                                    triggerGameOver();
+                                }
+                            }
+                        });
+                    }
+                });
+
+                // [렌더링 2단계] 주인공 캐릭터 큐브 렌더링
+                const pPos = getIsoProjection(player.visualLane, player.visualRow);
+                drawIsoBox(player.visualLane, player.visualRow, 22 + player.jumpY, '#33ff33', '#005500', '#00aa00');
+
+                // [렌더링 3단계] 파티클 시스템 업데이트 및 렌더링
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    let pt = particles[i];
+                    pt.x += pt.vx; pt.y += pt.vy; pt.vy += 0.2; pt.alpha -= 0.02;
+                    if (pt.alpha <= 0) {
+                        particles.splice(i, 1);
+                    } else {
+                        ctx.save(); ctx.globalAlpha = pt.alpha;
+                        ctx.fillStyle = pt.color;
+                        ctx.fillRect(pt.x, pt.y, 6, 6);
+                        ctx.restore();
+                    }
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 최초 실행 루프 활성화
+        gameLoop();
+    </script>
+</body>
+</html>

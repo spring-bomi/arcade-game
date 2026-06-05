@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>픽셀 드라이브 - 레트로 키오스크</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            /* 레트로 테마 색상 (네온 없음) */
+            --primary-color: #FFD700; /* 노란색 */
+            --secondary-color: #0000FF; /* 파란색 */
+            --accent-color: #FF0000; /* 빨간색 */
+            --bg-color: #101018;
+            --road-color: #202028;
+            --sidebar-color: #1a1a25;
+            --gothic-font: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050508;
+            color: #fff;
+            font-family: var(--gothic-font);
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* 키오스크 세로형 컨테이너 (9:16 비율) */
+        #game-container {
+            position: relative;
+            width: 540px; /* 세로형 너비 */
+            height: 960px; /* 세로형 높이 */
+            display: flex;
+            flex-direction: column;
+            background: var(--sidebar-color);
+            border: 8px solid #444; /* 단단한 테두리 */
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        /* 상단 게임 화면 */
+        canvas {
+            width: 540px;
+            height: 640px;
+            background: var(--road-color);
+            border-bottom: 4px solid #444;
+        }
+
+        /* 하단 UI 영역 */
+        #sidebar {
+            width: 100%;
+            height: 320px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            box-sizing: border-box;
+        }
+
+        #webcam-container {
+            position: relative;
+            width: 160px;
+            height: 120px;
+            border: 4px solid #fff; /* 단순한 흰색 테두리 */
+            border-radius: 8px;
+            overflow: hidden;
+            transform: scaleX(-1); /* 좌우 반전으로 거울 효과 */
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #ui-info {
+            text-align: center;
+            width: 100%;
+        }
+
+        .score-box {
+            font-size: 24px;
+            font-weight: 900;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+        }
+
+        .status-box {
+            font-size: 14px;
+            font-weight: 700;
+            color: #aaa;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 6px;
+            min-height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1.4;
+        }
+
+        /* 컨트롤 가이드 UI */
+        #wheel-guide {
+            width: 80px;
+            height: 80px;
+            border: 6px solid #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.1s ease;
+            margin: 15px 0;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        #wheel-pointer {
+            width: 8px;
+            height: 30px;
+            background: var(--secondary-color);
+            border-radius: 4px;
+            transform: translateY(-15px);
+        }
+
+        /* 스타트 / 오버 오버레이 */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 540px;
+            height: 640px;
+            background: rgba(16, 16, 24, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .overlay h2 {
+            font-size: 42px;
+            font-weight: 900;
+            color: var(--accent-color);
+            margin-bottom: 25px;
+            text-align: center;
+            letter-spacing: 2px;
+        }
+
+        .overlay p {
+            font-size: 16px;
+            font-weight: 500;
+            color: #ccc;
+            line-height: 1.8;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: 700;
+            font-family: var(--gothic-font);
+            background: var(--secondary-color);
+            color: #fff;
+            border: 4px solid #fff;
+            cursor: pointer;
+            transition: 0.1s;
+            border-radius: 4px;
+        }
+
+        .btn:hover {
+            background: var(--primary-color);
+            color: #000;
+        }
+
+        #loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary-color);
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">AI 핸드트래킹 모델 로딩 중... 잠시만 기다려주세요.</div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="540" height="640"></canvas>
+
+        <div id="startOverlay" class="overlay">
+            <h2>PIXEL DRIVE</h2>
+            <p>
+                양손을 가슴 높이로 들어<br>
+                <strong>가상의 핸들</strong>을 잡으세요!<br><br>
+                <span style="color:var(--primary-color); font-weight:700;">왼손</span>을 올리면 <span style="color:var(--primary-color); font-weight:700;">왼쪽</span>으로,<br>
+                <span style="color:var(--primary-color); font-weight:700;">오른손</span>을 올리면 <span style="color:var(--primary-color); font-weight:700;">오른쪽</span>으로!<br><br>
+                장애물을 무사히 피하세요!
+            </p>
+            <button class="btn" onclick="startGame()">게임 시작</button>
+        </div>
+
+        <div id="gameOverOverlay" class="overlay" style="display: none;">
+            <h2>GAME OVER</h2>
+            <p id="finalScore" style="font-size: 22px; font-weight:700; margin-bottom: 30px; color:var(--primary-color);">Score: 0</p>
+            <button class="btn" onclick="startGame()">다시 도전</button>
+        </div>
+
+        <div id="sidebar">
+            <div id="webcam-container">
+                <video id="webcam" autoplay playsinline></video>
+            </div>
+
+            <div id="ui-info">
+                <div class="score-box">SCORE: <span id="scoreVal">0</span></div>
+                <div id="status" class="status-box">카메라 연결을 확인 중입니다...</div>
+            </div>
+
+            <div id="wheel-guide">
+                <div id="wheel-pointer"></div>
+            </div>
+
+            <div style="font-size:12px; font-weight:500; color:#667; text-align:center; line-height:1.4;">
+                양손이 모두 카메라에 보여야<br>조향이 가능합니다.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('webcam');
+        const statusBox = document.getElementById('status');
+        const scoreVal = document.getElementById('scoreVal');
+        const wheelGuide = document.getElementById('wheel-guide');
+
+        // 게임 상태 변수
+        let gameState = 'READY'; 
+        let score = 0;
+        let car = { x: 270 - 20, y: 550, width: 40, height: 70, speed: 0 };
+        let obstacles = [];
+        let roadLines = [];
+        let targetAngle = 0; 
+        let currentAngle = 0; 
+
+        // 도로선 초기화
+        for (let i = 0; i < 7; i++) {
+            roadLines.push({ y: i * 100 });
+        }
+
+        // --- 게임 로직 및 렌더링 ---
+        function startGame() {
+            score = 0;
+            car.x = 270 - car.width / 2;
+            car.speed = 0;
+            obstacles = [];
+            document.getElementById('startOverlay').style.display = 'none';
+            document.getElementById('gameOverOverlay').style.display = 'none';
+            gameState = 'PLAYING';
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            document.getElementById('finalScore').innerText = `최종 점수: ${Math.floor(score)}`;
+            document.getElementById('gameOverOverlay').style.display = 'flex';
+        }
+
+        function spawnObstacle() {
+            if (Math.random() < 0.04 && obstacles.length < 5) {
+                let size = 40; 
+                obstacles.push({
+                    x: Math.random() * (canvas.width - size - 80) + 40,
+                    y: -size,
+                    width: size,
+                    height: size,
+                    speed: Math.random() * 2 + 5 + (score / 400) 
+                });
+            }
+        }
+
+        function updateGame() {
+            if (gameState !== 'PLAYING') return;
+
+            score += 0.1;
+            scoreVal.innerText = Math.floor(score);
+
+            currentAngle += (targetAngle - currentAngle) * 0.15;
+            wheelGuide.style.transform = `rotate(${currentAngle * (180 / Math.PI)}deg)`;
+
+            const sensitivity = 20;
+            car.speed = Math.sin(currentAngle) * sensitivity;
+            car.x += car.speed;
+
+            if (car.x < 40) car.x = 40;
+            if (car.x > canvas.width - car.width - 40) car.x = canvas.width - car.width - 40;
+
+            roadLines.forEach(line => {
+                line.y += 6 + (score / 200);
+                if (line.y > canvas.height) line.y = 0;
+            });
+
+            spawnObstacle();
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.y += obs.speed;
+
+                if (obs.x < car.x + car.width &&
+                    obs.x + obs.width > car.x &&
+                    obs.y < car.y + car.height &&
+                    obs.y + obs.height > car.y) {
+                    gameOver();
+                }
+
+                if (obs.y > canvas.height) {
+                    obstacles.splice(i, 1);
+                }
+            }
+        }
+
+        function drawPixelRect(x, y, w, h, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, w, h);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctx.fillRect(x, y + h - 4, w, 4); 
+            ctx.fillRect(x + w - 4, y, 4, h); 
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.fillRect(x, y, w, 4); 
+            ctx.fillRect(x, y, 4, h); 
+        }
+
+        function drawGame() {
+            ctx.fillStyle = varColor('--road-color');
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = varColor('--primary-color');
+            ctx.lineWidth = 6;
+            ctx.setLineDash([15, 15]);
+            ctx.beginPath();
+            ctx.moveTo(35, 0); ctx.lineTo(35, canvas.height);
+            ctx.moveTo(canvas.width - 35, 0); ctx.lineTo(canvas.width - 35, canvas.height);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([20, 30]);
+            roadLines.forEach(line => {
+                ctx.beginPath();
+                ctx.moveTo(canvas.width / 2, line.y);
+                ctx.lineTo(canvas.width / 2, line.y + 60);
+                ctx.stroke();
+            });
+            ctx.setLineDash([]); 
+
+            drawPixelRect(car.x, car.y, car.width, car.height, varColor('--accent-color'));
+            drawPixelRect(car.x - 4, car.y + 10, 4, 16, varColor('--secondary-color'));
+            drawPixelRect(car.x + car.width, car.y + 10, 4, 16, varColor('--secondary-color'));
+            drawPixelRect(car.x - 4, car.y + 45, 4, 16, varColor('--secondary-color'));
+            drawPixelRect(car.x + car.width, car.y + 45, 4, 16, varColor('--secondary-color'));
+            drawPixelRect(car.x + 4, car.y + 4, 8, 8, varColor('--primary-color'));
+            drawPixelRect(car.x + car.width - 12, car.y + 4, 8, 8, varColor('--primary-color'));
+
+            obstacles.forEach(obs => {
+                drawPixelRect(obs.x, obs.y, obs.width, obs.height, '#FFA500'); 
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.fillRect(obs.x + 8, obs.y + obs.height/2 - 2, obs.width - 16, 4);
+                ctx.fillRect(obs.x + obs.width/2 - 2, obs.y + 8, 4, obs.height - 16);
+            });
+        }
+
+        function varColor(name) {
+            return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        }
+
+        function gameLoop() {
+            updateGame();
+            drawGame();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {
+                statusBox.innerText = "상태: 🕹️ 가상 핸들 제어 중";
+                statusBox.style.color = varColor('--primary-color');
+
+                let handA = results.multiHandLandmarks[0][9]; 
+                let handB = results.multiHandLandmarks[1][9];
+
+                let leftScreenHand = handA.x < handB.x ? handA : handB;
+                let rightScreenHand = handA.x > handB.x ? handA : handB;
+
+                let dy = leftScreenHand.y - rightScreenHand.y;
+                let dx = rightScreenHand.x - leftScreenHand.x; 
+                
+                let angle = Math.atan2(dy, dx);
+                if (Math.abs(angle) < 0.05) angle = 0; 
+                
+                targetAngle = angle;
+            } else {
+                statusBox.innerText = "상태: ⚠️ 양손을 모두 들어주세요";
+                statusBox.style.color = varColor('--accent-color');
+                targetAngle = 0; 
+            }
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 160,
+            height: 120 
+        });
+        
+        camera.start().then(() => {
+            document.getElementById('loading').style.display = 'none';
+        });
+
+        gameLoop();
+    </script>
+</body>
+</html>

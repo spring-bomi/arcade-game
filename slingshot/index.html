@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>아케이드 1인칭 포물선 새총 (FORTRESS CRUSH 3D)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0; padding: 0;
+            background-color: #150f0d;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; overflow: hidden;
+            font-family: 'Impact', 'Arial Black', sans-serif;
+        }
+
+        /* 아케이드 캐비닛 원목 프레임 디자인 */
+        #game-view {
+            position: relative;
+            width: 506px; 
+            height: 900px;
+            background: linear-gradient(to bottom, #7dd3fc 0%, #e0f2fe 45%, #a7f3d0 50%, #4ade80 100%);
+            border: 16px solid #3e2723; 
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 30px 70px rgba(0,0,0,0.8), inset 0 0 40px rgba(0,0,0,0.6);
+        }
+
+        canvas {
+            display: block; width: 100%; height: 100%;
+            position: absolute; top: 0; left: 0; z-index: 2;
+        }
+
+        #webcam { display: none; }
+
+        /* 아케이드 스타일 상단 정보 레이어 */
+        .ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 5;
+            padding: 35px; box-sizing: border-box;
+            color: #d84315; -webkit-text-stroke: 1.5px #fff;
+        }
+        .ui-header { display: flex; justify-content: space-between; font-size: 32px; letter-spacing: 1px; }
+        
+        .guide-text { 
+            position: absolute; bottom: 50px; left: 5%; width: 90%; 
+            text-align: center; font-size: 20px; color: #fff; font-weight: bold;
+            background: #5d4037; border: 4px solid #3e2723; border-radius: 10px;
+            padding: 12px 0; -webkit-text-stroke: 0px; box-shadow: 0 6px 0 #2e1a12;
+        }
+
+        /* 오버레이 팝업 화면 */
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #fdfbf7;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 10; gap: 20px; padding: 45px; box-sizing: border-box; text-align: center;
+            border: 4px solid #5d4037;
+        }
+        .overlay h1 { font-size: 46px; margin: 0; color: #3e2723; -webkit-text-stroke: 2px #fff; letter-spacing: -1px; }
+        .overlay p { font-size: 20px; color: #5d4037; font-family: sans-serif; font-weight: bold; line-height: 1.7; }
+        
+        /* 아케이드 버튼 스타일 */
+        .btn {
+            padding: 14px 45px; font-size: 24px; font-weight: bold;
+            background-color: #ff9100; border: 4px solid #3e2723; border-radius: 15px;
+            color: white; cursor: pointer; pointer-events: auto;
+            box-shadow: 0 8px 0 #b36200;
+            transition: all 0.1s;
+        }
+        .btn:active { transform: translateY(6px); box-shadow: 0 2px 0 #b36200; }
+        .hidden { display: none !important; }
+
+        /* 가상 리워드 QR 플레이트 */
+        .qr-mockup {
+            width: 140px; height: 140px;
+            background: #000; border: 8px solid #fff;
+            margin: 5px 0; display: flex; flex-wrap: wrap; padding: 4px; gap: 4px;
+        }
+        .qr-pixel { width: 24px; height: 24px; background: #000; }
+    </style>
+</head>
+<body>
+
+    <div id="game-view">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="gameCanvas" width="506" height="900"></canvas>
+        
+        <div class="ui-layer">
+            <div class="ui-header">
+                <div style="color:#ff9100;">일반 돌탄환 장전</div>
+                <div>기회: <span id="ammo" style="color:#ff3d00;">3</span> / 3</div>
+            </div>
+            <div class="guide-text" id="guide">가죽 파우치를 👌 집은 뒤 아래로 당기세요!</div>
+        </div>
+
+        <div id="screen-loading" class="overlay">
+            <h1>센서 캘리브레이션</h1>
+            <p>화면 중앙 웹캠 인식을 고도화 중입니다.<br>카메라가 켜지면 손을 바르게 들어주세요.</p>
+        </div>
+
+        <div id="screen-start" class="overlay hidden">
+            <h1 style="font-size: 50px; color:#d84315;">FORTRESS CRUSH</h1>
+            <p>1인칭 시점 포물선 새총 사격!<br><br>중앙의 파우치를 잡고 **아래로 길게** 당기면 공중으로 3D 포물선 가이드가 형성됩니다. 조준을 마치고 손을 펼쳐 발사하세요!</p>
+            <button class="btn" onclick="startGame()">INSERT COIN</button>
+        </div>
+
+        <div id="screen-result" class="overlay hidden">
+            <h1 id="result-title">STAGE CLEAR ✨</h1>
+            <p id="result-desc">요새의 중추 코어를 완파했습니다!</p>
+            
+            <div style="font-size: 16px; font-weight: bold; color: #3e2723;">[ 키오스크 리워드 교환 QR ]</div>
+            <div class="qr-mockup">
+                <div class="qr-pixel" style="background:#fff;"></div><div class="qr-pixel"></div><div class="qr-pixel"></div><div class="qr-pixel" style="background:#fff;"></div><div class="qr-pixel"></div>
+                <div class="qr-pixel"></div><div class="qr-pixel" style="background:#fff;"></div><div class="qr-pixel" style="background:#fff;"></div><div class="qr-pixel"></div><div class="qr-pixel" style="background:#fff;"></div>
+                <div class="qr-pixel" style="background:#fff;"></div><div class="qr-pixel"></div><div class="qr-pixel"></div><div class="qr-pixel" style="background:#fff;"></div><div class="qr-pixel"></div>
+                <div class="qr-pixel"></div><div class="qr-pixel" style="background:#fff;"></div><div class="qr-pixel"></div><div class="qr-pixel" style="background:#fff;"></div><div class="qr-pixel" style="background:#fff;"></div>
+                <div class="qr-pixel" style="background:#fff;"></div><div class="qr-pixel"></div><div class="qr-pixel" style="background:#fff;"></div><div class="qr-pixel"></div><div class="qr-pixel" style="background:#fff;"></div>
+            </div>
+            
+            <div style="display: flex; gap: 15px; margin-top: 10px;">
+                <button class="btn" onclick="startGame()">다시하기</button>
+                <button class="btn" onclick="goToMain()" style="background-color: #795548; box-shadow: 0 8px 0 #4e342e;">메인화면</button>
+            </div>
+        </div>
+    </div>
+
+    <script {
+type: uploaded file
+fileName: image_9d3a5d.png
+}>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('webcam');
+        const guideEl = document.getElementById('guide');
+
+        let gameState = 'LOADING';
+        let ammo = 3;
+
+        const slingshotBase = { x: 253, y: 460, pouchSize: 55 }; 
+        const leftFork = { x: 133, y: 380 };                     
+        const rightFork = { x: 373, y: 380 };                    
+        let currentPouchPos = { x: slingshotBase.x, y: slingshotBase.y, size: slingshotBase.pouchSize };
+
+        let blocks = [];
+        let particles = []; 
+        const floorY = 520; 
+
+        let handPointer = { x: slingshotBase.x, y: slingshotBase.y, isPinch: false, zDepth: 0, active: false };
+        let isPulling = false;
+        let mouseHold = false;
+        
+        let stoneFlight = { x: 0, y: 0, vx: 0, vy: 0, t: 0, active: false, hasHit: false };
+        let virtualCrosshair = { x: 0, y: 0 }; 
+
+        let camera = { shake: 0, tilt: 0, zoom: 1.0, vignette: 0 };
+
+        // --- 1. Hands 트래킹 셋업 ---
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.75, minTrackingConfidence: 0.75 });
+        hands.onResults(onHandResults);
+
+        navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 640 } })
+        .then((stream) => {
+            videoElement.srcObject = stream;
+            const cameraObj = new Camera(videoElement, { onFrame: async () => { await hands.send({ image: videoElement }); }, width: 480, height: 640 });
+            cameraObj.start();
+            showOverlay('START');
+        });
+
+        function onHandResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                handPointer.active = true;
+
+                let targetX = (1 - landmarks[8].x) * canvas.width;
+                let targetY = landmarks[8].y * canvas.height;
+                handPointer.x += (targetX - handPointer.x) * 0.75;
+                handPointer.y += (targetY - handPointer.y) * 0.75;
+                
+                const wrist = landmarks[0];
+                const middleBase = landmarks[9];
+                const handSize = Math.hypot(wrist.x - middleBase.x, wrist.y - middleBase.y);
+                handPointer.zDepth = Math.min(1, Math.max(0, (handSize - 0.1) * 5));
+
+                const thumb = landmarks[4];
+                const index = landmarks[8];
+                const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+                const prevPinch = handPointer.isPinch;
+                handPointer.isPinch = (pinchDist < 0.08);
+
+                if (!prevPinch && handPointer.isPinch) handlePinchStart();
+                if (prevPinch && !handPointer.isPinch) handlePinchEnd();
+            } else {
+                if (handPointer.isPinch) handlePinchEnd();
+                handPointer.active = false; handPointer.isPinch = false;
+            }
+        }
+
+        // --- 2. 마우스 백업 인터랙션 ---
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            handPointer.x = e.clientX - rect.left; handPointer.y = e.clientY - rect.top;
+            handPointer.isPinch = true; handlePinchStart(); mouseHold = true;
+        });
+        canvas.addEventListener('mousemove', (e) => {
+            if (!mouseHold) return;
+            const rect = canvas.getBoundingClientRect();
+            handPointer.x = e.clientX - rect.left; handPointer.y = e.clientY - rect.top;
+        });
+        window.addEventListener('mouseup', () => {
+            if (!mouseHold) return;
+            mouseHold = false; handPointer.isPinch = false; handlePinchEnd();
+        });
+
+        // --- 3. 새총 제어 엔진 ---
+        function handlePinchStart() {
+            if (gameState !== 'PLAYING' || ammo <= 0 || stoneFlight.active) return;
+
+            const dist = Math.hypot(handPointer.x - currentPouchPos.x, handPointer.y - currentPouchPos.y);
+            if (dist < currentPouchPos.size + 35) {
+                isPulling = true;
+                guideEl.innerText = "아래로 시원하게 당기세요! 길게 늘릴수록 높게 조준됩니다.";
+            }
+        }
+
+        function handlePinchEnd() {
+            if (!isPulling) return;
+            isPulling = false;
+            
+            let pullX = currentPouchPos.x - slingshotBase.x;
+            let pullY = currentPouchPos.y - slingshotBase.y;
+            const dist = Math.hypot(pullX, pullY);
+
+            if (dist < 35) {
+                resetSlingshotVisual();
+                guideEl.innerText = "더 과감하게 아래로 조준선을 당기세요.";
+                return;
+            }
+
+            ammo--;
+            document.getElementById('ammo').innerText = ammo;
+            guideEl.innerText = "탄환 시원하게 포격 개시!";
+
+            camera.shake = 4; 
+
+            stoneFlight = {
+                x: slingshotBase.x, y: slingshotBase.y,
+                vx: -pullX * 0.22, vy: -pullY * 0.28,
+                t: 0, active: true, hasHit: false
+            };
+
+            resetSlingshotVisual();
+        }
+
+        function resetSlingshotVisual() {
+            currentPouchPos.x = slingshotBase.x; currentPouchPos.y = slingshotBase.y;
+            currentPouchPos.size = slingshotBase.pouchSize;
+            camera.zoom = 1.0; camera.vignette = 0; camera.tilt = 0;
+        }
+
+        // --- 4. 요새 무작위 패턴 빌더 및 연쇄 붕괴 ---
+        function initFortressStructures() {
+            const buildingStyle = Math.floor(Math.random() * 3); 
+            blocks = [];
+
+            if (buildingStyle === 0) {
+                blocks = [
+                    { id: 'b1', x: 183, y: 480, w: 30, h: 80, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#a1887f', isTarget: false },
+                    { id: 'b2', x: 323, y: 480, w: 30, h: 80, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#a1887f', isTarget: false },
+                    { id: 'b3', x: 253, y: 430, w: 180, h: 20, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#7e57c2', isTarget: false },
+                    { id: 'b4', x: 213, y: 390, w: 25, h: 60, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#bcaaa4', isTarget: false },
+                    { id: 'b5', x: 293, y: 390, w: 25, h: 60, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#bcaaa4', isTarget: false },
+                    { id: 'b6', x: 253, y: 350, w: 120, h: 20, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#7e57c2', isTarget: false },
+                    { id: 't1', x: 253, y: 320, w: 40, h: 40, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#ff5252', isTarget: true, pulse: 0 }
+                ];
+            } else if (buildingStyle === 1) {
+                blocks = [
+                    { id: 'b1', x: 143, y: 480, w: 40, h: 80, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#90a4ae', isTarget: false },
+                    { id: 'b2', x: 363, y: 480, w: 40, h: 80, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#90a4ae', isTarget: false },
+                    { id: 'b3', x: 253, y: 430, w: 260, h: 25, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#455a64', isTarget: false },
+                    { id: 'b4', x: 253, y: 390, w: 35, h: 60, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#bcaaa4', isTarget: false },
+                    { id: 't1', x: 253, y: 335, w: 45, h: 45, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#ff5252', isTarget: true, pulse: 0 }
+                ];
+            } else {
+                blocks = [
+                    { id: 'b1', x: 193, y: 480, w: 25, h: 80, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#ffb74d', isTarget: false },
+                    { id: 'b2', x: 313, y: 480, w: 25, h: 80, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#ffb74d', isTarget: false },
+                    { id: 'b3', x: 253, y: 430, w: 150, h: 20, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#f57c00', isTarget: false },
+                    { id: 'b4', x: 253, y: 395, w: 100, h: 50, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#ffe0b2', isTarget: false },
+                    { id: 't1', x: 253, y: 340, w: 40, h: 50, vx: 0, vy: 0, angle: 0, vAngle: 0, isStatic: true, color: '#ff5252', isTarget: true, pulse: 0 }
+                ];
+            }
+        }
+
+        function updateStructuralDependencies() {
+            blocks.forEach(topBlock => {
+                if (topBlock.isStatic && topBlock.y < floorY - topBlock.h/2 - 5) {
+                    let hasFloorSupport = false;
+                    blocks.forEach(botBlock => {
+                        if (botBlock !== topBlock && botBlock.isStatic) {
+                            let isXOverlap = (Math.abs(topBlock.x - botBlock.x) < (topBlock.w/2 + botBlock.w/2 + 8));
+                            let isYJustBelow = (botBlock.y - botBlock.h/2 <= topBlock.y + topBlock.h/2 + 15) && (botBlock.y > topBlock.y);
+                            if (isXOverlap && isYJustBelow) hasFloorSupport = true;
+                        }
+                    });
+                    if (!hasFloorSupport) {
+                        topBlock.isStatic = false;
+                        topBlock.vy = 1.8;
+                        topBlock.vAngle = (Math.random() - 0.5) * 0.04;
+                    }
+                }
+            });
+        }
+
+        function createBlockDebris(x, y, count, styleColor) {
+            for(let i=0; i<count; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8 - 3,
+                    size: Math.random() * 5 + 3, alpha: 1, color: styleColor
+                });
+            }
+        }
+
+        // [전면 개편] 느슨한 원형 범위를 지우고 블록의 직사각형 박스 경계선 내에 돌멩이가 완전히 들어가야만 무너지도록 변경 (AABB 방식)
+        function checkHit(aimX, aimY) {
+            let hitRegistered = false;
+
+            blocks.forEach(block => {
+                if (block.isStatic) {
+                    // 탄환의 비주얼 반경(약 4~5px) 정도만 최소한의 여유 마진으로 둡니다.
+                    let margin = 5; 
+                    
+                    // 정확히 블록의 가로/세로 범위 공간을 관통했는지 실시간 체크
+                    if (aimX >= block.x - block.w/2 - margin && aimX <= block.x + block.w/2 + margin &&
+                        aimY >= block.y - block.h/2 - margin && aimY <= block.y + block.h/2 + margin) {
+                        
+                        block.isStatic = false;
+                        block.vx = (block.x - aimX) * 0.35 + (Math.random() - 0.5) * 8;
+                        block.vy = -5 - Math.random() * 5;
+                        block.vAngle = (Math.random() - 0.5) * 0.35;
+                        
+                        createBlockDebris(block.x, block.y, 16, block.color);
+                        hitRegistered = true;
+                    }
+                }
+            });
+            
+            if (hitRegistered) {
+                camera.shake = 7; 
+            }
+        }
+
+        // --- 5. 게임 흐름 제어 ---
+        function startGame() {
+            ammo = 3;
+            particles = [];
+            resetSlingshotVisual(); 
+            initFortressStructures();
+            stoneFlight.active = false;
+            camera.shake = 0;
+            showOverlay('NONE');
+            guideEl.innerText = "새총 가죽 파우치를 👌 집은 뒤 아래로 길게 잡아당기세요!";
+            gameState = 'PLAYING';
+        }
+
+        function goToMain() {
+            showOverlay('START');
+            gameState = 'START';
+        }
+
+        function checkGameEnding() {
+            gameState = 'GAMEOVER';
+            const coreTarget = blocks.find(b => b.isTarget);
+            const isFortressCleared = coreTarget && !coreTarget.isStatic && coreTarget.y > floorY + 20;
+
+            if (isFortressCleared) {
+                document.getElementById('result-title').innerText = "FORTRESS CLEARED ✨";
+                document.getElementById('result-desc').innerText = "성공! 핵심 요새를 무너뜨렸습니다. QR코드로 즉석 리워드를 수령하세요!";
+            } else {
+                document.getElementById('result-title').innerText = "공성 실패 💥";
+                document.getElementById('result-desc').innerText = "요새가 굳건합니다. 다시 도전하여 격파해 보세요!";
+            }
+            showOverlay('RESULT');
+        }
+
+        function showOverlay(type) {
+            document.getElementById('screen-loading').classList.add('hidden');
+            document.getElementById('screen-start').classList.add('hidden');
+            document.getElementById('screen-result').classList.add('hidden');
+            if (type === 'START') document.getElementById('screen-start').classList.remove('hidden');
+            if (type === 'RESULT') document.getElementById('screen-result').classList.remove('hidden');
+        }
+
+        // --- 6. 2D Canvas 실시간 렌더링 루프 ---
+        function renderLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameState === 'PLAYING' || gameState === 'GAMEOVER') {
+                
+                let shakeX = 0, shakeY = 0;
+                if (camera.shake > 0) {
+                    shakeX = (Math.random() - 0.5) * camera.shake;
+                    shakeY = (Math.random() - 0.5) * camera.shake;
+                    camera.shake *= 0.88;
+                }
+
+                ctx.save();
+                ctx.translate(canvas.width / 2 + shakeX, floorY * 0.7 + shakeY);
+                ctx.rotate(camera.tilt);
+                ctx.scale(camera.zoom, camera.zoom);
+                ctx.translate(-canvas.width / 2, -floorY * 0.7);
+
+                ctx.fillStyle = '#8bc34a'; ctx.fillRect(-100, floorY, canvas.width + 200, canvas.height - floorY + 200);
+                ctx.fillStyle = '#4e342e'; ctx.fillRect(-100, floorY, canvas.width + 200, 12); 
+
+                updateStructuralDependencies();
+
+                blocks.forEach(block => {
+                    if (!block.isStatic) {
+                        block.x += block.vx; block.y += block.vy; block.vy += 0.4; block.angle += block.vAngle;
+                        if (block.y > floorY + 200) { block.vx = 0; block.vy = 0; block.vAngle = 0; }
+                    }
+                    ctx.save();
+                    ctx.translate(block.x, block.y);
+                    ctx.rotate(block.angle);
+                    
+                    if (block.isTarget) {
+                        if (isPulling) {
+                            block.pulse += 0.15;
+                            let pulseScale = 1.0 + Math.sin(block.pulse) * 0.12;
+                            ctx.scale(pulseScale, pulseScale);
+                            ctx.strokeStyle = '#ffd600'; ctx.lineWidth = 4;
+                            ctx.beginPath(); ctx.arc(0, 0, block.w * 0.9, 0, Math.PI * 2); ctx.stroke();
+                        }
+                        ctx.fillStyle = block.color; ctx.strokeStyle = '#3e2723'; ctx.lineWidth = 3;
+                        ctx.fillRect(-block.w/2, -block.h/2, block.w, block.h);
+                        ctx.strokeRect(-block.w/2, -block.h/2, block.w, block.h);
+                        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+                        ctx.beginPath(); ctx.moveTo(-block.w/2, 0); ctx.lineTo(block.w/2, 0); ctx.moveTo(0, -block.h/2); ctx.lineTo(0, block.h/2); ctx.stroke();
+                    } else {
+                        ctx.fillStyle = block.color; ctx.strokeStyle = '#3e2723'; ctx.lineWidth = 3;
+                        ctx.fillRect(-block.w/2, -block.h/2, block.w, block.h);
+                        ctx.strokeRect(-block.w/2, -block.h/2, block.w, block.h);
+                    }
+                    ctx.restore();
+                });
+
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    let p = particles[i];
+                    p.x += p.vx; p.y += p.vy; p.vy += 0.35; p.alpha -= 0.025;
+                    if (p.alpha <= 0) {
+                        particles.splice(i, 1);
+                    } else {
+                        ctx.save(); ctx.globalAlpha = p.alpha;
+                        ctx.fillStyle = p.color; ctx.strokeStyle = '#3e2723'; ctx.lineWidth = 1;
+                        ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+                        ctx.strokeRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+                        ctx.restore();
+                    }
+                }
+
+                if (isPulling) {
+                    let dx = handPointer.x - slingshotBase.x;
+                    let dy = handPointer.y - slingshotBase.y;
+                    let dist = Math.hypot(dx, dy);
+                    if (dist > 220) { dx = (dx / dist) * 220; dy = (dy / dist) * 220; dist = 220; }
+
+                    currentPouchPos.x = slingshotBase.x + dx;
+                    currentPouchPos.y = slingshotBase.y + Math.max(-40, dy);
+                    currentPouchPos.size = slingshotBase.pouchSize * (1 + handPointer.zDepth * 0.4);
+
+                    let pullRatio = dist / 220;
+                    if (pullRatio > 0.35) {
+                        camera.shake = (pullRatio - 0.35) * 1.5; 
+                        camera.zoom = 1.0 + (pullRatio - 0.35) * 0.14;
+                        camera.vignette = (pullRatio - 0.35) * 1.3;
+                    }
+                    camera.tilt = -dx * 0.00035;
+                }
+
+                if (isPulling && handPointer.active) {
+                    let pullX = currentPouchPos.x - slingshotBase.x;
+                    let pullY = currentPouchPos.y - slingshotBase.y;
+
+                    let simVx = -pullX * 0.22;
+                    let simVy = -pullY * 0.28;
+                    let simGravity = 0.42;
+                    let numDots = 15;
+
+                    ctx.save();
+                    for (let i = 1; i <= numDots; i++) {
+                        let t = i * 1.8;
+                        let dotX = slingshotBase.x + simVx * t * 0.15;
+                        let dotY = slingshotBase.y + simVy * t * 0.15 + 0.5 * simGravity * t * t;
+                        let zScale = 1.0 - (i / numDots) * 0.65;
+
+                        ctx.beginPath();
+                        ctx.arc(dotX, dotY, 8 * zScale, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(255, 255, 255, ${0.92 * zScale})`;
+                        ctx.fill();
+
+                        if (i === numDots) {
+                            virtualCrosshair.x = dotX; virtualCrosshair.y = dotY;
+                        }
+                    }
+                    ctx.restore();
+                }
+
+                ctx.strokeStyle = '#2e1a12'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+                ctx.beginPath(); ctx.moveTo(leftFork.x, leftFork.y); ctx.lineTo(currentPouchPos.x - currentPouchPos.size/2, currentPouchPos.y); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(rightFork.x, rightFork.y); ctx.lineTo(currentPouchPos.x + currentPouchPos.size/2, currentPouchPos.y); ctx.stroke();
+
+                ctx.strokeStyle = '#a1887f'; ctx.lineWidth = 26; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(253, 850); ctx.lineTo(253, 500); ctx.lineTo(leftFork.x, leftFork.y);
+                ctx.moveTo(253, 500); ctx.lineTo(rightFork.x, rightFork.y);
+                ctx.stroke();
+                ctx.strokeStyle = '#3e2723'; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(246, 850); ctx.lineTo(246, 503); ctx.lineTo(leftFork.x + 5, leftFork.y + 12); ctx.stroke();
+
+                ctx.fillStyle = '#3e2723';
+                ctx.beginPath(); ctx.arc(currentPouchPos.x, currentPouchPos.y, currentPouchPos.size * 0.82, 0, Math.PI * 2); ctx.fill();
+
+                if (isPulling) {
+                    ctx.save();
+                    ctx.fillStyle = '#d84315'; ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 2;
+                    const stoneRad = 15 * (currentPouchPos.size / slingshotBase.pouchSize);
+                    ctx.beginPath(); ctx.arc(currentPouchPos.x, currentPouchPos.y, stoneRad, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                    ctx.restore();
+                }
+
+                if (stoneFlight.active) {
+                    stoneFlight.t += 0.55;
+                    
+                    stoneFlight.x = slingshotBase.x + stoneFlight.vx * stoneFlight.t * 0.15;
+                    stoneFlight.y = slingshotBase.y + stoneFlight.vy * stoneFlight.t * 0.15 + 0.5 * 0.42 * stoneFlight.t * stoneFlight.t;
+                    
+                    let tMax = 27;
+                    let progress = Math.min(1, stoneFlight.t / tMax);
+                    let scale3D = 1.6 * (1.0 - progress * 0.75);
+
+                    ctx.save();
+                    ctx.fillStyle = '#d84315'; ctx.strokeStyle = '#3e2723'; ctx.lineWidth = 2 * scale3D;
+                    ctx.beginPath(); ctx.arc(stoneFlight.x, stoneFlight.y, 16 * scale3D, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                    ctx.restore();
+
+                    if (stoneFlight.t >= 23 && !stoneFlight.hasHit) {
+                        checkHit(stoneFlight.x, stoneFlight.y); 
+                        stoneFlight.hasHit = true;
+                    }
+
+                    if (stoneFlight.t >= tMax) {
+                        stoneFlight.active = false;
+                        if (ammo <= 0) setTimeout(checkGameEnding, 1000);
+                        else guideEl.innerText = "다음 탄환이 준비되었습니다. 👌 장전 후 당겨주세요.";
+                    }
+                }
+
+                if (handPointer.active) {
+                    ctx.save();
+                    let crossX = isPulling ? virtualCrosshair.x : handPointer.x;
+                    let crossY = isPulling ? virtualCrosshair.y : handPointer.y;
+
+                    ctx.strokeStyle = handPointer.isPinch ? '#2e7d32' : '#c62828'; ctx.lineWidth = 4;
+                    ctx.beginPath(); ctx.arc(crossX, crossY, 24, 0, Math.PI * 2); ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(crossX - 32, crossY); ctx.lineTo(crossX + 32, crossY);
+                    ctx.moveTo(crossX, crossY - 32); ctx.lineTo(crossX, crossY + 32);
+                    ctx.stroke();
+                    
+                    if (isPulling) {
+                        const fillLen = Math.min(1, Math.max(0, (handPointer.y - slingshotBase.y) / 220)) * 60;
+                        ctx.fillStyle = '#ffb300'; ctx.fillRect(crossX + 34, crossY - 30, 9, 60);
+                        ctx.fillStyle = '#ff3d00'; ctx.fillRect(crossX + 34, crossY + 30, 9, -fillLen);
+                    }
+                    ctx.restore();
+                }
+
+                ctx.restore(); 
+
+                if (camera.vignette > 0) {
+                    ctx.save();
+                    let gradient = ctx.createRadialGradient(canvas.width/2, canvas.height/2, canvas.width * 0.25, canvas.width/2, canvas.height/2, canvas.height * 0.65);
+                    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+                    gradient.addColorStop(1, `rgba(30, 15, 10, ${Math.min(0.8, camera.vignette * 0.8)})`);
+                    ctx.fillStyle = gradient; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.restore();
+                }
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        renderLoop();
+    </script>
+</body>
+</html>

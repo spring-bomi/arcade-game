@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>레트로 인형 뽑기 아케이드 (CLAW MACHINE PRO)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0; padding: 0;
+            background-color: #1a1525;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; overflow: hidden;
+            font-family: 'Impact', 'Arial Black', sans-serif;
+        }
+
+        /* 아케이드 인형뽑기 캐비닛 프레임 */
+        #game-view {
+            position: relative;
+            width: 506px; 
+            height: 900px;
+            background: linear-gradient(to bottom, #ffdae0 0%, #fbcfe8 100%);
+            border: 16px solid #f43f5e; 
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 30px 70px rgba(0,0,0,0.6), inset 0 0 30px rgba(0,0,0,0.3);
+        }
+
+        canvas {
+            display: block; width: 100%; height: 100%;
+            position: absolute; top: 0; left: 0; z-index: 2;
+        }
+
+        #webcam { display: none; }
+
+        /* 인게임 전광판 UI */
+        .ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 5;
+            padding: 35px; box-sizing: border-box;
+            color: #fff; -webkit-text-stroke: 1.5px #be185d;
+        }
+        .ui-header { display: flex; justify-content: space-between; font-size: 30px; letter-spacing: 1px; }
+        
+        .guide-text { 
+            position: absolute; bottom: 50px; left: 5%; width: 90%; 
+            text-align: center; font-size: 19px; color: #fff; font-weight: bold;
+            background: #be185d; border: 4px solid #9d174d; border-radius: 12px;
+            padding: 12px 0; -webkit-text-stroke: 0px; box-shadow: 0 6px 0 #701a3e;
+        }
+
+        /* [변경] 전체 화면을 가리지 않는 리얼타임 미니 팝업창 디자인 */
+        .popup-modal {
+            position: absolute; top: 30%; left: 10%; width: 80%;
+            background: #fffcfc; border: 6px solid #be185d; border-radius: 20px;
+            padding: 30px 20px; box-sizing: border-box; text-align: center;
+            z-index: 12; box-shadow: 0 20px 0 rgba(0,0,0,0.3);
+            display: flex; flex-direction: column; align-items: center; gap: 15px;
+        }
+        .popup-modal h2 { font-size: 36px; margin: 0; color: #be185d; -webkit-text-stroke: 1px #fff; }
+        .popup-modal p { font-size: 18px; color: #4c0519; font-family: sans-serif; font-weight: bold; margin: 0; }
+
+        /* [추가] 뽑은 인형 갯수 및 비주얼 리스트를 보여주는 컬렉션 스크린 패널 */
+        .collection-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(26, 21, 37, 0.95); z-index: 15;
+            display: flex; flex-direction: column; align-items: center; padding: 40px; box-sizing: border-box;
+        }
+        .collection-title { font-size: 38px; color: #f43f5e; -webkit-text-stroke: 1px #fff; margin-bottom: 5px; }
+        .collection-count { font-size: 22px; color: #fff; font-family: sans-serif; margin-bottom: 25px; }
+        
+        .collection-grid {
+            width: 100%; flex-grow: 1; overflow-y: auto;
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;
+            background: #2d233d; border: 4px solid #f43f5e; border-radius: 16px; padding: 20px; box-sizing: border-box;
+        }
+        .collection-item {
+            background: #3d3052; border: 3px solid #db2777; border-radius: 12px;
+            height: 100px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 5px;
+        }
+        .mini-doll-icon { width: 45px; height: 45px; border-radius: 50%; border: 2px solid #000; }
+
+        /* 풀 스크린 오버레이 (최초 빌드용) */
+        .overlay-full {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #fffcfc; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 20; gap: 20px; padding: 45px; box-sizing: border-box; text-align: center;
+        }
+        .overlay-full h1 { font-size: 44px; margin: 0; color: #be185d; -webkit-text-stroke: 1.5px #fff; }
+        .overlay-full p { font-size: 19px; color: #4c0519; font-family: sans-serif; font-weight: bold; line-height: 1.7; }
+        
+        .btn {
+            padding: 12px 35px; font-size: 22px; font-weight: bold;
+            background-color: #f43f5e; border: 4px solid #9d174d; border-radius: 15px;
+            color: white; cursor: pointer; pointer-events: auto;
+            box-shadow: 0 6px 0 #9d174d; transition: all 0.1s;
+        }
+        .btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #9d174d; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="game-view">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="gameCanvas" width="506" height="900"></canvas>
+        
+        <div class="ui-layer">
+            <div class="ui-header">
+                <div>TOY CRANE 3D</div>
+                <div>SCORE: <span id="doll-count" style="color:#f43f5e;">0</span></div>
+            </div>
+            <div class="guide-text" id="guide">손바닥을 편 채 조준하고, ✊ 주먹을 쥐어 하강시키세요!</div>
+        </div>
+
+        <div id="screen-loading" class="overlay-full">
+            <h1>크레인 시스템 가동</h1>
+            <p>핸드트래킹 조준 캘리브레이션을 진행 중입니다.<br>카메라 권한을 수락해 주세요.</p>
+        </div>
+
+        <div id="screen-start" class="overlay-full hidden">
+            <h1>CLAW MACHINE 3D</h1>
+            <p>실제 오락실 인형뽑기와 동일한 정밀 판정이 적용되었습니다!<br><br>집게 정중앙을 인형 중심에 정확히 맞추지 않으면 집게가 미끄러집니다. 신중하게 그랩하세요!</p>
+            <button class="btn" onclick="startGame()">INSERT COIN</button>
+        </div>
+
+        <div id="popup-result" class="popup-modal hidden">
+            <h2 id="popup-title">SUCCESS 🎉</h2>
+            <p id="popup-desc">인형 확보 완료!</p>
+            <div style="display: flex; gap: 12px; margin-top: 5px;">
+                <button class="btn" onclick="retryAttempt()" style="font-size:18px; padding:10px 22px;">한 번 더</button>
+                <button class="btn" onclick="showCollection()" style="font-size:18px; padding:10px 22px; background-color:#be185d; border-color:#701a3e; box-shadow:0 6px 0 #701a3e;">뽑은 갯수보기</button>
+            </div>
+        </div>
+
+        <div id="panel-collection" class="collection-screen hidden">
+            <div class="collection-title">MY COLLECTION</div>
+            <div class="collection-count">현재까지 확보한 인형: <span id="collection-total-text" style="color:#f43f5e; font-weight:bold;">0</span>개</div>
+            
+            <div class="collection-grid" id="collection-vault">
+                </div>
+            
+            <button class="btn" onclick="closeCollection()" style="margin-top: 20px; background-color:#4b5563; border-color:#1f2937; box-shadow:0 6px 0 #1f2937;">돌아가기</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('webcam');
+        const guideEl = document.getElementById('guide');
+
+        let gameState = 'LOADING';
+        
+        // 데이터 보관함 변수 정립
+        let caughtDolls = []; // [추가] 실제 성공적으로 획득한 인형 오브젝트들을 저장하는 누적 배열
+
+        // 집게 기본 구성 제원
+        const clawMachineCeiling = 120; 
+        let claw = {
+            x: 253, y: clawMachineCeiling, 
+            targetX: 253, targetY: clawMachineCeiling,
+            state: 'MOVE', 
+            angle: 0.5,    
+            attachedDoll: null
+        };
+
+        const prizeChute = { x: 0, y: 680, w: 110, h: 220 };
+        let dolls = [];
+        const dollRadius = 32;
+
+        let handPointer = { x: 253, y: clawMachineCeiling, isGrab: false, active: false };
+
+        // --- 1. Hands 트래킹 셋업 ---
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.75, minTrackingConfidence: 0.75 });
+        hands.onResults(onHandResults);
+
+        navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 640 } })
+        .then((stream) => {
+            videoElement.srcObject = stream;
+            const cameraObj = new Camera(videoElement, { onFrame: async () => { await hands.send({ image: videoElement }); }, width: 480, height: 640 });
+            cameraObj.start();
+            showOverlay('START');
+        });
+
+        function onHandResults(results) {
+            if (gameState !== 'PLAYING') return;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                handPointer.active = true;
+
+                let tx = (1 - landmarks[8].x) * canvas.width;
+                let ty = landmarks[8].y * canvas.height;
+                
+                handPointer.x += (tx - handPointer.x) * 0.45;
+                handPointer.y += (ty - handPointer.y) * 0.45;
+
+                const isIndexFolded = landmarks[8].y > landmarks[6].y;
+                const isMiddleFolded = landmarks[12].y > landmarks[10].y;
+                const isRingFolded = landmarks[16].y > landmarks[14].y;
+                const isPinkyFolded = landmarks[20].y > landmarks[18].y;
+                
+                const prevGrab = handPointer.isGrab;
+                handPointer.isGrab = (isIndexFolded && isMiddleFolded && isRingFolded && isPinkyFolded);
+
+                if (!prevGrab && handPointer.isGrab && claw.state === 'MOVE') {
+                    claw.state = 'DROP';
+                    guideEl.innerText = "조준 낙하 중! 과연 정중앙을 명중했을지?";
+                }
+            } else {
+                handPointer.active = false;
+            }
+        }
+
+        // 마우스 호환성 백업
+        canvas.addEventListener('mousemove', (e) => {
+            if (handPointer.active || claw.state !== 'MOVE' || gameState !== 'PLAYING') return;
+            const rect = canvas.getBoundingClientRect();
+            handPointer.x = e.clientX - rect.left; handPointer.y = e.clientY - rect.top;
+        });
+        canvas.addEventListener('mousedown', () => {
+            if (handPointer.active || claw.state !== 'MOVE' || gameState !== 'PLAYING') return;
+            claw.state = 'DROP';
+        });
+
+        // --- 2. 무작위 배치 스택 생성 ---
+        function generateDollsPile() {
+            dolls = [];
+            const colors = ['#f43f5e', '#fb923c', '#fbbf24', '#34d399', '#60a5fa', '#a78bfa', '#f472b6'];
+            const types = ['BEAR', 'CAT', 'BUNNY'];
+            
+            let index = 0;
+            for (let row = 0; row < 3; row++) {
+                let startX = 130 + row * 15;
+                let endX = 460 - row * 15;
+                for (let x = startX; x <= endX; x += 58) {
+                    dolls.push({
+                        id: index++,
+                        x: x + (Math.random() - 0.5) * 10,
+                        y: 720 - row * 44 + (Math.random() - 0.5) * 6,
+                        color: colors[Math.floor(Math.random() * colors.length)],
+                        type: types[Math.floor(Math.random() * types.length)],
+                        isStatic: true, vx: 0, vy: 0
+                    });
+                }
+            }
+        }
+
+        // --- 3. [고도화] 정밀 물리 집게 상태 머신 수식 제어 ---
+        function updateClawPhysics() {
+            if (claw.state === 'MOVE') {
+                claw.targetX = Math.max(50, Math.min(canvas.width - 50, handPointer.x));
+                claw.targetY = Math.max(50, Math.min(240, handPointer.y)); 
+                claw.x += (claw.targetX - claw.x) * 0.15;
+                claw.y += (claw.targetY - claw.y) * 0.15;
+                claw.angle = 0.5; 
+            } 
+            else if (claw.state === 'DROP') {
+                claw.y += 6.5;
+                claw.angle = 0.6; 
+
+                // 낙하 도중 인형 더미 탑에 닿았는지 감사
+                let hitDoll = null;
+                for (let doll of dolls) {
+                    if (!doll.isStatic) continue;
+                    let dist = Math.hypot(claw.x - doll.x, claw.y + 45 - doll.y);
+                    if (dist < dollRadius + 15) {
+                        hitDoll = doll;
+                        break;
+                    }
+                }
+
+                // 한계 도달 시 그랩 단계 진입
+                if (claw.y >= 690 || hitDoll) {
+                    claw.state = 'GRAB';
+                    claw.grabTimer = 0;
+                }
+            } 
+            else if (claw.state === 'GRAB') {
+                claw.grabTimer += 1;
+                claw.angle -= (claw.angle - 0.12) * 0.12; // 꽉 조여드는 프레임 가중치
+
+                // 집게가 다 오므라들었을 때 정확히 한가운데 정렬(Alignment) 되었는지 정밀 수식 판정
+                if (claw.grabTimer === 35) {
+                    let closestDoll = null;
+                    let minDist = 999;
+
+                    dolls.forEach(doll => {
+                        if (!doll.isStatic) return;
+                        // [변경] 오차 반경이 좌우 16픽셀 이내 스폿일 때만 그랩 성공 인정 (진짜 인형뽑기 밸런싱)
+                        let xDiff = Math.abs(claw.x - doll.x);
+                        let yDiff = Math.abs((claw.y + 45) - doll.y);
+
+                        if (xDiff < 16 && yDiff < 45) {
+                            let dist = Math.hypot(xDiff, yDiff);
+                            if (dist < minDist) {
+                                minDist = dist;
+                                closestDoll = doll;
+                            }
+                        }
+                    });
+
+                    // 엄밀 조건 충족 시 결속 처리, 실 패시 집게만 혼자 올라감
+                    claw.attachedDoll = closestDoll;
+                }
+                
+                if (claw.grabTimer > 45) {
+                    claw.state = 'RAISE';
+                }
+            } 
+            else if (claw.state === 'RAISE') {
+                claw.y -= 5;
+                if (claw.attachedDoll) {
+                    claw.attachedDoll.x = claw.x;
+                    claw.attachedDoll.y = claw.y + 45;
+                }
+                if (claw.y <= clawMachineCeiling) {
+                    claw.y = clawMachineCeiling;
+                    claw.state = 'RETURN';
+                }
+            } 
+            else if (claw.state === 'RETURN') {
+                if (claw.x > 60) {
+                    claw.x -= 4.5;
+                    if (claw.attachedDoll) {
+                        claw.attachedDoll.x = claw.x;
+                        claw.attachedDoll.y = claw.y + 45;
+                    }
+                } else {
+                    claw.state = 'RELEASE';
+                    claw.grabTimer = 0;
+                }
+            } 
+            else if (claw.state === 'RELEASE') {
+                claw.grabTimer += 1;
+                claw.angle += (0.6 - claw.angle) * 0.12; 
+
+                if (claw.attachedDoll) {
+                    let d = claw.attachedDoll;
+                    claw.attachedDoll = null;
+                    d.isStatic = false; // 중력 낙하 스위치 전개
+                    d.vy = 1;
+                }
+
+                if (claw.grabTimer > 40) {
+                    // 크레인 작동 페이즈 완료 -> 미니 결과 팝업창 판정 함수 호출
+                    setTimeout(triggerResultPopup, 1000);
+                    claw.state = 'HOLD'; // 팝업 응답 처리 전까지 일시 정지 홀드
+                }
+            }
+
+            // 낙하 인형 물리 수식 가산
+            dolls.forEach(doll => {
+                if (!doll.isStatic) {
+                    doll.y += doll.vy; doll.x += doll.vx; doll.vy += 0.45;
+                    if (doll.y > 820) { doll.y = 820; doll.vy = 0; doll.vx = 0; }
+                }
+            });
+        }
+
+        // --- 4. [고도화] 실시간 미니 팝업 오버레이 및 듀얼 스위치 제어 ---
+        function triggerResultPopup() {
+            gameState = 'POPUP';
+            
+            // 배출구 구역 안으로 골인에 성공한 인형이 존재하는가 서치
+            let successDoll = null;
+            for (let i = dolls.length - 1; i >= 0; i--) {
+                let d = dolls[i];
+                if (!d.isStatic && d.x >= prizeChute.x && d.x <= prizeChute.x + prizeChute.w && d.y > prizeChute.y - 20) {
+                    successDoll = d;
+                    dolls.splice(i, 1); // 기계 내부 배열에선 완전히 축출 정리
+                    break;
+                }
+            }
+
+            const popup = document.getElementById('popup-result');
+            const title = document.getElementById('popup-title');
+            const desc = document.getElementById('popup-desc');
+
+            if (successDoll) {
+                // 누적 보관함 배열에 주입 적치
+                caughtDolls.push(successDoll);
+                document.getElementById('doll-count').innerText = caughtDolls.length;
+
+                title.innerText = "GRAB SUCCESS 🎉";
+                title.style.color = "#4ade80";
+                desc.innerText = `귀여운 ${successDoll.type} 인형을 획득칸으로 안전하게 배출했습니다!`;
+            } else {
+                title.innerText = "GRAB FAILED 💥";
+                title.style.color = "#f43f5e";
+                desc.innerText = "중심축 조준 실패! 집게가 인형 중심을 비껴갔습니다.";
+            }
+
+            popup.classList.remove('hidden');
+        }
+
+        // '한 번 더' 처리 트리거 함수
+        function retryAttempt() {
+            document.getElementById('popup-result').classList.add('hidden');
+            claw.state = 'MOVE';
+            claw.attachedDoll = null;
+            gameState = 'PLAYING';
+            guideEl.innerText = "손바닥을 편 채 조준하고, ✊ 주먹을 쥐어 하강시키세요!";
+        }
+
+        // '뽑은 갯수보기' 패널 오픈 연동
+        function showCollection() {
+            document.getElementById('popup-result').classList.add('hidden');
+            const vault = document.getElementById('collection-vault');
+            const totalText = document.getElementById('collection-total-text');
+            
+            // 텍스트 총량 매핑
+            totalText.innerText = caughtDolls.length;
+            vault.innerHTML = ''; // 초기 리셋
+
+            if (caughtDolls.length === 0) {
+                vault.innerHTML = `<div style="grid-column: span 3; color:#a78bfa; text-align:center; font-family:sans-serif; padding-top:40px;">아직 확보한 인형이 없습니다.</div>`;
+            } else {
+                // 보관함 리스트 동적 HTML 카드 생성 구조 전개
+                caughtDolls.forEach((doll, idx) => {
+                    let card = document.createElement('div');
+                    card.className = 'collection-item';
+                    card.innerHTML = `
+                        <div class="mini-doll-icon" style="background-color: ${doll.color}; box-shadow: inset -3px -3px 6px rgba(0,0,0,0.3)"></div>
+                        <div style="font-size:12px; color:#fff; font-family:sans-serif; font-weight:bold;">No.${idx+1} ${doll.type}</div>
+                    `;
+                    vault.appendChild(card);
+                });
+            }
+
+            document.getElementById('panel-collection').classList.remove('hidden');
+            gameState = 'COLLECTION';
+        }
+
+        function closeCollection() {
+            document.getElementById('panel-collection').classList.add('hidden');
+            // 다시 게임판 위 유휴 대기 모드로 원복
+            claw.state = 'MOVE';
+            claw.attachedDoll = null;
+            gameState = 'PLAYING';
+        }
+
+        // --- 5. 기간 메인 플로우 전환 제어 ---
+        function startGame() {
+            generateDollsPile();
+            caughtDolls = []; // 보관함 완전 초기화
+            document.getElementById('doll-count').innerText = 0;
+            claw.state = 'MOVE';
+            claw.attachedDoll = null;
+            showOverlay('NONE');
+            gameState = 'PLAYING';
+        }
+
+        function goToMain() {
+            showOverlay('START');
+            gameState = 'START';
+        }
+
+        function showOverlay(type) {
+            document.getElementById('screen-loading').classList.add('hidden');
+            document.getElementById('screen-start').classList.add('hidden');
+            document.getElementById('panel-collection').classList.add('hidden');
+            document.getElementById('popup-result').classList.add('hidden');
+            if (type === 'START') document.getElementById('screen-start').classList.remove('hidden');
+        }
+
+        // --- 6. 2D Canvas 드로잉 아키텍처 ---
+        function drawDoll(d) {
+            ctx.save(); ctx.translate(d.x, d.y);
+            ctx.styleColor = d.color; ctx.strokeStyle = '#3e2723'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(0, 0, dollRadius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+            ctx.fillStyle = d.color;
+            if (d.type === 'BEAR') {
+                ctx.beginPath(); ctx.arc(-22, -22, 12, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                ctx.beginPath(); ctx.arc(22, -22, 12, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            } else if (d.type === 'BUNNY') {
+                ctx.fillRect(-14, -48, 9, 24); ctx.strokeRect(-14, -48, 9, 24);
+                ctx.fillRect(5, -48, 9, 24); ctx.strokeRect(5, -48, 9, 24);
+            }
+
+            ctx.fillStyle = '#000';
+            ctx.beginPath(); ctx.arc(-10, -5, 3, 0, Math.PI*2); ctx.arc(10, -5, 3, 0, Math.PI*2); ctx.fill(); 
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 5, 8, 0, Math.PI*2); ctx.fill(); ctx.stroke(); 
+            ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(0, 2, 3, 0, Math.PI*2); ctx.fill(); 
+            ctx.restore();
+        }
+
+        function renderLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameState === 'PLAYING' || gameState === 'GAMEOVER' || gameState === 'POPUP') {
+                updateClawPhysics();
+
+                // 출구 배출 통로 그리기
+                ctx.fillStyle = '#4c0519'; ctx.fillRect(prizeChute.x, prizeChute.y, prizeChute.w, prizeChute.h);
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.strokeRect(prizeChute.x, prizeChute.y, prizeChute.w, prizeChute.h);
+
+                // 인형 덩어리 출력
+                dolls.forEach(drawDoll);
+
+                // 상부 연결 케이블 선
+                ctx.strokeStyle = '#64748b'; ctx.lineWidth = 5;
+                ctx.beginPath(); ctx.moveTo(claw.x, 0); ctx.lineTo(claw.x, claw.y); ctx.stroke();
+
+                // 3지 서보 집게 로봇 가동 렌더
+                ctx.save(); ctx.translate(claw.x, claw.y);
+                ctx.fillStyle = '#cbd5e1'; ctx.strokeStyle = '#334155'; ctx.lineWidth = 3;
+                ctx.fillRect(-20, -10, 40, 20); ctx.strokeRect(-20, -10, 40, 20);
+
+                ctx.lineWidth = 6; ctx.strokeStyle = '#475569'; ctx.lineCap = 'round';
+                ctx.save(); ctx.translate(-15, 8); ctx.rotate(-claw.angle);
+                ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-20, 25); ctx.lineTo(-10, 50); ctx.stroke(); ctx.restore();
+                ctx.save(); ctx.translate(15, 8); ctx.rotate(claw.angle);
+                ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(20, 25); ctx.lineTo(10, 50); ctx.stroke(); ctx.restore();
+                ctx.restore();
+
+                // 타겟 조준 피드백 서클 (조준선 정밀 교정용 스폿 표시)
+                if (handPointer.active && claw.state === 'MOVE' && gameState === 'PLAYING') {
+                    ctx.save();
+                    ctx.strokeStyle = handPointer.isGrab ? '#f43f5e' : '#34d399'; ctx.lineWidth = 4;
+                    // 외부 가늠 링
+                    ctx.beginPath(); ctx.arc(handPointer.x, handPointer.y, 22, 0, Math.PI * 2); ctx.stroke();
+                    // 내측 수직 하강 안내선 가이드선 추가
+                    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 6]);
+                    ctx.beginPath(); ctx.moveTo(handPointer.x, handPointer.y); ctx.lineTo(handPointer.x, 680); ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        renderLoop();
+    </script>
+</body>
+</html>

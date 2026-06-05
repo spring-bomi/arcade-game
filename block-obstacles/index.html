@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>프로모션 미니게임 - 먼지 쳐내기!</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0b0b1e;
+            color: #fff;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            box-shadow: 0 0 30px rgba(0, 255, 204, 0.3);
+            border-radius: 12px;
+            overflow: hidden;
+            background: radial-gradient(circle, #1a1a3a 0%, #050515 100%);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 웹캠 오버레이 (작게 띄움) */
+        #webcam-preview {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            width: 120px;
+            height: 90px;
+            border: 2px solid #00ffcc;
+            border-radius: 6px;
+            transform: scaleX(-1); /* 거울 모드 */
+            background: #000;
+        }
+
+        /* UI 레이어 */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.8);
+        }
+
+        .score-box { color: #00ffcc; }
+        .life-box { color: #ff0055; }
+
+        /* 게임 상태 오버레이 (스타트, 게임오버, 로딩) */
+        .screen-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 30, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .screen-overlay h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #00ffcc;
+            text-shadow: 0 0 20px rgba(0, 255, 204, 0.6);
+        }
+
+        .screen-overlay p {
+            font-size: 18px;
+            color: #8a8ab0;
+            margin-bottom: 30px;
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        .btn {
+            padding: 12px 35px;
+            font-size: 20px;
+            font-weight: bold;
+            background: linear-gradient(45deg, #00ffcc, #0077ff);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            cursor: pointer;
+            pointer-events: auto;
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.5);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(0, 255, 204, 0.8);
+        }
+
+        #loading-screen { z-index: 20; background: #0b0b1e; }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #1a1a3a;
+            border-top: 5px solid #00ffcc;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* 히든 태그 */
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <video id="webcam" width="640" height="480" autoplay playsinline style="display:none;"></video>
+        <video id="webcam-preview" autoplay playsinline muted></video>
+
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+        <div class="ui-layer">
+            <div class="header">
+                <div class="score-box">SCORE: <span id="score">0</span></div>
+                <div class="life-box">LIFE: <span id="life">❤️❤️❤️</span></div>
+            </div>
+        </div>
+
+        <div id="loading-screen" class="screen-overlay">
+            <div class="spinner"></div>
+            <h1>Hand Tracking Loading...</h1>
+            <p>카메라 권한을 허용하고 잠시만 기다려주세요.<br>핸드트래킹 모델을 초기화 중입니다.</p>
+        </div>
+
+        <div id="start-screen" class="screen-overlay hidden">
+            <h1>DUST DEFENDER</h1>
+            <p>화면 중앙의 코어를 향해 날아오는 파편들을<br><strong>손을 흔들어(Swipe)</strong> 튕겨내고 코어를 방어하세요!</p>
+            <button class="btn" onclick="startGame()">게임 시작</button>
+        </div>
+
+        <div id="gameover-screen" class="screen-overlay hidden">
+            <h1>GAME OVER</h1>
+            <p>보호 대상이 파괴되었습니다.<br>최종 점수: <span id="final-score" style="color:#00ffcc; font-weight:bold;">0</span>점</p>
+            <button class="btn" onclick="startGame()">다시 도전</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('webcam');
+        const videoPreview = document.getElementById('webcam-preview');
+
+        // 게임 환경 변수
+        let gameState = 'LOADING'; // LOADING, START, PLAYING, GAMEOVER
+        let score = 0;
+        let maxLife = 3;
+        let life = maxLife;
+        let obstacles = [];
+        let particles = [];
+        
+        // 중앙 보호 오브젝트 설정
+        const core = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 40,
+            pulse: 0,
+            color: '#0077ff'
+        };
+
+        // 핸드 트래킹 및 포인터 위치 제어 변수
+        let handPointer = { x: -100, y: -100, prevX: -100, prevY: -100, active: false, radius: 25 };
+
+        // --- 1. 미디어파이프 핸드 트래킹 설정 ---
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults(onHandResults);
+
+        // 웹캠 스트림 연결
+        navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+        .then((stream) => {
+            videoElement.srcObject = stream;
+            videoPreview.srcObject = stream;
+            
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
+                width: 640,
+                height: 480
+            });
+            camera.start();
+            
+            // 로딩 종료 후 스타트 스크린 활성화
+            document.getElementById('loading-screen').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+            gameState = 'START';
+        })
+        .catch((err) => {
+            console.error("카메라를 불러올 수 없습니다. 마우스 모드로 대체합니다.", err);
+            document.getElementById('loading-screen').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+            gameState = 'START';
+        });
+
+        // 핸드 트래킹 결과 수신 이벤트
+        function onHandResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand = results.multiHandLandmarks[0];
+                // 8번 랜드마크 = 검지 손가락 끝 (Index Finger Tip)
+                const indexTip = hand[8]; 
+
+                handPointer.prevX = handPointer.x;
+                handPointer.prevY = handPointer.y;
+
+                // 좌우 반전 처리 및 캔버스 스케일 변환
+                handPointer.x = canvas.width - (indexTip.x * canvas.width);
+                handPointer.y = indexTip.y * canvas.height;
+                handPointer.active = true;
+            } else {
+                handPointer.active = false;
+            }
+        }
+
+        // 마우스 백업 인터랙션 (개발 및 카메라 미보유 유저 대응용)
+        canvas.addEventListener('mousemove', (e) => {
+            if (!handPointer.active) {
+                const rect = canvas.getBoundingClientRect();
+                handPointer.prevX = handPointer.x;
+                handPointer.prevY = handPointer.y;
+                handPointer.x = e.clientX - rect.left;
+                handPointer.y = e.clientY - rect.top;
+            }
+        });
+
+        // --- 2. 게임 오브젝트 클래스 정의 ---
+        class Obstacle {
+            constructor() {
+                // 화면 바깥 사방에서 랜덤 생성
+                const side = Math.floor(Math.random() * 4);
+                if (side === 0) { // Top
+                    this.x = Math.random() * canvas.width;
+                    this.y = -20;
+                } else if (side === 1) { // Right
+                    this.x = canvas.width + 20;
+                    this.y = Math.random() * canvas.height;
+                } else if (side === 2) { // Bottom
+                    this.x = Math.random() * canvas.width;
+                    this.y = canvas.height + 20;
+                } else { // Left
+                    this.x = -20;
+                    this.y = Math.random() * canvas.height;
+                }
+
+                this.radius = Math.random() * 12 + 8;
+                this.speed = Math.random() * 2 + 1.5 + (score * 0.05); // 점수가 높을수록 가속
+                this.color = `hsl(${Math.random() * 40 + 340}, 100%, 60%)`; // 붉은 계열 파편
+                this.isDeflected = false; // 튕겨 나갔는지 여부
+
+                // 중앙 코어를 향한 오리지널 벡터 계산
+                const angle = Math.atan2(core.y - this.y, core.x - this.x);
+                this.vx = Math.cos(angle) * this.speed;
+                this.vy = Math.sin(angle) * this.speed;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 튕겨나간 장애물은 화면 밖으로 나가면 삭제 처리 대상
+                if (this.isDeflected) {
+                    this.vy += 0.1; // 튕길 때 아케이드 느낌의 중력가속도 살짝 추가
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // 손가락에 맞고 튕겨나가는 물리 변환 로직
+            deflect(hx, hy) {
+                this.isDeflected = true;
+                // 손가락이 움직이던 방향과 튕기는 반발력 합성
+                const angle = Math.atan2(this.y - hy, this.x - hx);
+                const pushForce = 8;
+                this.vx = Math.cos(angle) * pushForce;
+                this.vy = Math.sin(angle) * pushForce - 3; // 위쪽 백터 가중치
+                this.color = '#00ffcc'; // 안전한 색상(민트색)으로 바꿈
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = Math.random() * 3 + 1;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 4 + 2;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.alpha = 1;
+                this.color = color;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= 0.03;
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // --- 3. 게임 핵심 루프 및 로직 제어 ---
+        let spawnTimer = 0;
+
+        function startGame() {
+            score = 0;
+            life = maxLife;
+            obstacles = [];
+            particles = [];
+            document.getElementById('score').innerText = score;
+            updateLifeUI();
+
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('gameover-screen').classList.add('hidden');
+            gameState = 'PLAYING';
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('gameover-screen').classList.remove('hidden');
+        }
+
+        function updateLifeUI() {
+            let hearts = '';
+            for(let i=0; i<maxLife; i++) {
+                hearts += (i < life) ? '❤️' : '🖤';
+            }
+            document.getElementById('life').innerText = hearts;
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 12; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // 메인 업데이트 & 렌더링 루프
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameState === 'PLAYING') {
+                // 1. 코어 애니메이션 연출 (펄스 광원 효과)
+                core.pulse += 0.05;
+                let currentCoreRadius = core.radius + Math.sin(core.pulse) * 3;
+                
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(core.x, core.y, currentCoreRadius, 0, Math.PI * 2);
+                ctx.fillStyle = core.color;
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = '#0077ff';
+                ctx.fill();
+                // 코어 테두리 라인
+                ctx.strokeStyle = '#00ffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+
+                // 2. 장애물 생성 타이머 조정
+                spawnTimer++;
+                const spawnRate = Math.max(20, 50 - Math.floor(score / 5)); // 점수가 오를수록 리스폰 주기 단축
+                if (spawnTimer > spawnRate) {
+                    obstacles.push(new Obstacle());
+                    spawnTimer = 0;
+                }
+
+                // 3. 장애물 처리 및 인터랙션 검사
+                for (let i = obstacles.length - 1; i >= 0; i--) {
+                    let obs = obstacles[i];
+                    obs.update();
+                    obs.draw();
+
+                    // 케이스 A: 튕겨나가지 않은 장애물이 손가락 가상 반경과 겹쳤을 때 (Swipe 처리)
+                    if (!obs.isDeflected) {
+                        let distToHand = Math.hypot(obs.x - handPointer.x, obs.y - handPointer.y);
+                        if (distToHand < obs.radius + handPointer.radius) {
+                            obs.deflect(handPointer.x, handPointer.y);
+                            score += 10;
+                            document.getElementById('score').innerText = score;
+                            createExplosion(obs.x, obs.y, '#00ffcc');
+                            continue;
+                        }
+
+                        // 케이스 B: 중앙 코어에 도달하여 충돌했을 때
+                        let distToCore = Math.hypot(obs.x - core.x, obs.y - core.y);
+                        if (distToCore < obs.radius + core.radius) {
+                            createExplosion(obs.x, obs.y, '#ff0055');
+                            obstacles.splice(i, 1);
+                            life--;
+                            updateLifeUI();
+                            if (life <= 0) gameOver();
+                            continue;
+                        }
+                    }
+
+                    // 화면 경계 밖으로 완전히 나가버린 오브젝트 정리
+                    if (obs.x < -50 || obs.x > canvas.width + 50 || obs.y < -50 || obs.y > canvas.height + 50) {
+                        obstacles.splice(i, 1);
+                    }
+                }
+
+                // 4. 이펙트 파티클 업데이트
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    particles[i].update();
+                    if (particles[i].alpha <= 0) {
+                        particles.splice(i, 1);
+                    } else {
+                        particles[i].draw();
+                    }
+                }
+
+                // 5. 실시간 컨트롤러 가이드 (손가락 위치 서클 렌더링)
+                if (handPointer.x > 0 && handPointer.y > 0) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(handPointer.x, handPointer.y, handPointer.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 255, 204, 0.2)';
+                    ctx.strokeStyle = '#00ffcc';
+                    ctx.lineWidth = 3;
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = '#00ffcc';
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            } else {
+                // 게임 플레이 중이 아닐 때 백그라운드 디자인 유지용 빈 스페이스 연출
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(core.x, core.y, core.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#222244';
+                ctx.fill();
+                ctx.restore();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 루프 실행
+        gameLoop();
+    </script>
+</body>
+</html>

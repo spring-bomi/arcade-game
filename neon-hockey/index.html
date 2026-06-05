@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Finger Slasher Air Hockey - Responsive</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #111; color: white; font-family: 'Arial', sans-serif;
+            overflow: hidden; touch-action: none;
+            display: flex; justify-content: center; align-items: center;
+        }
+        
+        /* 캔버스 컨테이너: 항상 지정된 비율을 유지하며 화면에 꽉 차게 조절됨 */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: 100vw;
+            max-height: 100vh;
+            overflow: hidden;
+        }
+
+        canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            /* 가로세로 비율 유지를 위해 JS에서 동적으로 scale을 조절할 예정 */
+            transform-origin: center center;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex; flex-direction: column;
+            justify-content: space-between; align-items: center; padding: 40px 0;
+            box-sizing: border-box; z-index: 10;
+        }
+        .score-board {
+            font-size: 4rem; font-weight: bold; font-style: italic;
+            text-shadow: 0 0 15px rgba(255,255,255,0.6);
+            user-select: none;
+        }
+        #player2-score { color: #ff4757; transform: rotate(180deg); }
+        #player1-score { color: #1e90ff; }
+        
+        #start-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 20; pointer-events: auto;
+        }
+        button {
+            padding: 15px 35px; font-size: 1.5rem; font-weight: bold;
+            background: #ff4757; color: white; border: none; border-radius: 50px;
+            cursor: pointer; box-shadow: 0 5px 15px rgba(255, 71, 87, 0.4);
+            transition: transform 0.2s;
+        }
+        button:active { transform: scale(0.95); }
+        video { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="start-screen">
+            <h1 style="color: #ff4757; font-style: italic; font-size: 3rem; margin-bottom: 10px;">FINGER SLASHER</h1>
+            <p style="margin-bottom: 30px; text-align: center; color: #ccc; line-height: 1.6;">
+                카메라 앞에서 검지 손가락을 휘둘러<br>가운데 40% 영역의 골대에 퍽을 넣으세요!
+            </p>
+            <button id="start-btn">게임 시작 (카메라 허용)</button>
+        </div>
+
+        <div id="ui-layer">
+            <div id="player2-score" class="score-board">0</div>
+            <div id="player1-score" class="score-board">0</div>
+        </div>
+
+        <video id="video" autoplay playsinline></video>
+        <canvas id="game-canvas"></canvas>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+
+    <script>
+        // --- 1. 가상 해상도 설정 (공/콜라이더 찌그러짐 방지 핵심) ---
+        // 창 크기에 상관없이 물리 세상은 항상 800x1200 고정
+        const V_WIDTH = 800;
+        const V_HEIGHT = 1200;
+
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Bodies = Matter.Bodies,
+              Composite = Matter.Composite,
+              Body = Matter.Body,
+              Events = Matter.Events;
+
+        const engine = Engine.create();
+        engine.world.gravity.y = 0; // 에어하키 중력 제거
+
+        const canvas = document.getElementById('game-canvas');
+
+        const render = Render.create({
+            canvas: canvas,
+            engine: engine,
+            options: {
+                width: V_WIDTH, 
+                height: V_HEIGHT,
+                wireframes: false, 
+                background: '#111'
+            }
+        });
+
+        // --- 2. 반응형 화면 크기 스케일링 함수 ---
+        let scaleX = 1;
+        let scaleY = 1;
+
+        function resizeGame() {
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+
+            // 창 크기에 맞춰 800x1200 종횡비를 유지하는 스케일 계산
+            const scale = Math.min(windowWidth / V_WIDTH, windowHeight / V_HEIGHT);
+            
+            // CSS 변형을 통해 캔버스 크기를 화면에 딱 맞춤 (찌그러짐 없음)
+            canvas.style.transform = `translate(-50%, -50%) scale(${scale})`;
+            
+            // 실제 브라우저 좌표 -> 물리 엔진 가상 좌표 변환을 위한 스케일 저장
+            const rect = canvas.getBoundingClientRect();
+            scaleX = V_WIDTH / rect.width;
+            scaleY = V_HEIGHT / rect.height;
+        }
+        window.addEventListener('resize', resizeGame);
+        resizeGame();
+
+
+        // --- 3. 반응형 골대 세팅 (가운데 40%만 뚫어놓기) ---
+        const wallOptions = { isStatic: true, render: { fillStyle: '#333' }, restitution: 1.0 };
+        const wallThickness = 100; // 두껍게 세팅하여 탈주 방지
+
+        // 가운데 40% 골대 영역 계산
+        const goalWidth = V_WIDTH * 0.4; 
+        const sideWallWidth = (V_WIDTH - goalWidth) / 2; // 양 옆을 막을 벽의 너비
+
+        const walls = [
+            // 좌우 전체 벽
+            Bodies.rectangle(0 - wallThickness/2, V_HEIGHT/2, wallThickness, V_HEIGHT, wallOptions),
+            Bodies.rectangle(V_WIDTH + wallThickness/2, V_HEIGHT/2, wallThickness, V_HEIGHT, wallOptions),
+            
+            // 상단 벽 (가운데 40% 비우기)
+            Bodies.rectangle(sideWallWidth / 2, 0 - wallThickness/2, sideWallWidth, wallThickness, wallOptions), // 상단 좌측
+            Bodies.rectangle(V_WIDTH - (sideWallWidth / 2), 0 - wallThickness/2, sideWallWidth, wallThickness, wallOptions), // 상단 우측
+            
+            // 하단 벽 (가운데 40% 비우기)
+            Bodies.rectangle(sideWallWidth / 2, V_HEIGHT + wallThickness/2, sideWallWidth, wallThickness, wallOptions), // 하단 좌측
+            Bodies.rectangle(V_WIDTH - (sideWallWidth / 2), V_HEIGHT + wallThickness/2, sideWallWidth, wallThickness, wallOptions) // 하단 우측
+        ];
+
+        // 가각의 골대 시각화 라인 (골대 영역을 시각적으로 인지시키기 위함)
+        const goalLine1 = Bodies.rectangle(V_WIDTH/2, 5, goalWidth, 10, { isStatic: true, isSensor: true, render: { fillStyle: '#ff4757' } });
+        const goalLine2 = Bodies.rectangle(V_WIDTH/2, V_HEIGHT - 5, goalWidth, 10, { isStatic: true, isSensor: true, render: { fillStyle: '#1e90ff' } });
+
+        // 중앙선
+        const centerLine = Bodies.rectangle(V_WIDTH/2, V_HEIGHT/2, V_WIDTH, 5, { 
+            isStatic: true, isSensor: true, render: { fillStyle: '#444' } 
+        });
+
+        // 퍽 (Puck) - 가상 해상도가 커졌으므로 반지름도 35로 상향 조정
+        let puck = Bodies.circle(V_WIDTH / 2, V_HEIGHT / 2, 35, {
+            restitution: 0.9, 
+            friction: 0.002,  
+            frictionAir: 0.01, 
+            render: { fillStyle: '#fff' }
+        });
+
+        Composite.add(engine.world, [...walls, goalLine1, goalLine2, centerLine, puck]);
+
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+
+        // --- 4. 게임 점수 판정 로직 ---
+        let score1 = 0; let score2 = 0;
+        const score1El = document.getElementById('player1-score');
+        const score2El = document.getElementById('player2-score');
+
+        Events.on(engine, 'beforeUpdate', () => {
+            // 퍽이 위/아래 골대(뚫린 40% 영역) 밖으로 완전히 나갔는지 체크
+            if (puck.position.y < -40) {
+                score1++; score1El.innerText = score1; resetPuck();
+            } else if (puck.position.y > V_HEIGHT + 40) {
+                score2++; score2El.innerText = score2; resetPuck();
+            }
+            
+            // 속도 무한 증폭 방지 (최고 속도 제한)
+            const maxVelocity = 40;
+            if (Matter.Vector.magnitude(puck.velocity) > maxVelocity) {
+                Body.setVelocity(puck, Matter.Vector.mult(Matter.Vector.normalise(puck.velocity), maxVelocity));
+            }
+        });
+
+        function resetPuck() {
+            Body.setPosition(puck, { x: V_WIDTH / 2, y: V_HEIGHT / 2 });
+            Body.setVelocity(puck, { x: 0, y: 0 });
+        }
+
+
+        // --- 5. 핸드 트래킹 및 가상 좌표 매핑 (MediaPipe) ---
+        const videoElement = document.getElementById('video');
+        let fingerColliders = []; 
+
+        function createFingerCollider(color) {
+            // 가상 공간 크기에 맞춰 콜라이더 반지름도 40으로 고정하여 동그랗게 유지
+            const collider = Bodies.circle(-200, -200, 40, {
+                isStatic: true, 
+                restitution: 1.3, // 타격 시 튕겨나가는 힘 증폭
+                render: { fillStyle: color }
+            });
+            Composite.add(engine.world, collider);
+            return collider;
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 2, 
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults((results) => {
+            // 인식된 손의 수만큼 콜라이더 동적 매칭
+            while (fingerColliders.length < (results.multiHandLandmarks ? results.multiHandLandmarks.length : 0)) {
+                const colors = ['#1e90ff', '#ff4757'];
+                fingerColliders.push(createFingerCollider(colors[fingerColliders.length % 2]));
+            }
+            // 미인식 콜라이더 제거(화면 밖 이동)
+            for(let i = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0; i < fingerColliders.length; i++) {
+                Body.setPosition(fingerColliders[i], { x: -200, y: -200 });
+            }
+
+            if (results.multiHandLandmarks) {
+                const rect = canvas.getBoundingClientRect();
+
+                for (let index = 0; index < results.multiHandLandmarks.length; index++) {
+                    const landmarks = results.multiHandLandmarks[index];
+                    const indexFingerTip = landmarks[8]; // 검지 끝
+
+                    // 1. 브라우저 창 기준 픽셀 좌표 계산 (반전 적용)
+                    const clientX = window.innerWidth - (indexFingerTip.x * window.innerWidth);
+                    const clientY = indexFingerTip.y * window.innerHeight;
+
+                    // 2. 브라우저 픽셀 좌표 -> 캔버스 내부 상대 좌표 변환
+                    const canvasX = clientX - rect.left;
+                    const canvasY = clientY - rect.top;
+
+                    // 3. 캔버스 내부 좌표 -> 물리 엔진 가상 해상도(800x1200) 좌표로 맵핑
+                    const targetX = canvasX * scaleX;
+                    const targetY = canvasY * scaleY;
+
+                    const collider = fingerColliders[index];
+                    
+                    const dx = targetX - collider.position.x;
+                    const dy = targetY - collider.position.y;
+                    
+                    Body.setPosition(collider, { x: targetX, y: targetY });
+                    Body.setVelocity(collider, { x: dx * 0.4, y: dy * 0.4 });
+                }
+            }
+        });
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 640, height: 480,
+            facingMode: 'user'
+        });
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('start-screen').style.display = 'none';
+            camera.start();
+            // 카메라 시작 후 정확한 맵핑을 위해 리사이즈 재호출
+            setTimeout(resizeGame, 500);
+        });
+    </script>
+</body>
+</html>

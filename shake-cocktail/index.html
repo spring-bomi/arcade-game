@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VASELINE XR LAB - HIGH FIDELITY</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Noto+Sans+KR:wght@400;700;900&display=swap');
+        
+        body { margin: 0; overflow: hidden; background-color: #000; display: flex; justify-content: center; align-items: center; height: 100vh; color: white; font-family: 'Noto Sans KR', sans-serif; }
+        .container { position: relative; width: 100%; max-width: 460px; max-height: 90vh; aspect-ratio: 9/16; overflow: hidden; background: #050505; box-shadow: 0 0 100px rgba(0, 255, 204, 0.15); border-radius: 16px; }
+        
+        video, #output_canvas, #three-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+        video { transform: scaleX(-1); visibility: hidden; } 
+        #output_canvas { z-index: 2; }       
+        #three-canvas { z-index: 3; pointer-events: none; } 
+
+        /* SF영화 스타일의 힙한 인트로 UI */
+        #intro-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle at center, rgba(10,15,30,0.85) 0%, rgba(0,0,0,0.95) 100%); backdrop-filter: blur(15px); z-index: 40; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px; box-sizing: border-box; }
+        .intro-brand { font-family: 'Orbitron', sans-serif; font-size: 14px; color: #00ffcc; font-weight: 900; letter-spacing: 5px; margin-bottom: 10px; text-shadow: 0 0 10px #00ffcc; }
+        .intro-title { font-size: 32px; font-weight: 900; margin: 0 0 30px 0; line-height: 1.3; background: linear-gradient(135deg, #fff 30%, #8b5cf6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .how-to-play { width: 100%; background: rgba(255,255,255,0.03); border-radius: 24px; padding: 25px; text-align: left; margin-bottom: 40px; border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(10px); }
+        .how-to-play p { margin: 15px 0; font-size: 13px; display: flex; align-items: center; gap: 15px; color: #ddd; }
+        .step-badge { background: #fff; color: #000; padding: 4px 12px; border-radius: 8px; font-size: 11px; font-weight: 900; font-family: 'Orbitron', sans-serif; }
+        #start-btn { padding: 18px 60px; font-size: 18px; font-weight: 900; color: #000; background: #00ffcc; border: none; border-radius: 40px; cursor: pointer; font-family: 'Orbitron', sans-serif; box-shadow: 0 0 30px #00ffcc; transition: all 0.3s; }
+
+        /* 테크니컬 상단 UI */
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: none; flex-direction: column; }
+        .header { padding: 40px 20px; text-align: center; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); }
+        #timer-bar-bg { width: 100%; height: 5px; background: rgba(255,255,255,0.05); position: absolute; top: 0; left: 0; }
+        #timer-bar { width: 100%; height: 100%; background: linear-gradient(90deg, #00ffcc, #00ff55); box-shadow: 0 0 15px #00ffcc; transition: width 0.1s linear; }
+
+        #step2-ui { display: none; flex-grow: 1; align-items: center; justify-content: center; flex-direction: column; }
+        #shake-gauge-bg { width: 75%; height: 12px; background: rgba(255,255,255,0.1); border-radius: 6px; margin-top: 260px; overflow: hidden; border: 1px solid rgba(255,255,255,0.2); }
+        #shake-gauge { width: 0%; height: 100%; background: linear-gradient(90deg, #ff00cc, #3333ff); box-shadow: 0 0 20px #ff00cc; transition: width 0.1s; }
+
+        /* 프리미엄 실물 티켓 느낌의 ID 카드 UI */
+        #step3-ui { display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 20; pointer-events: none; }
+        #photo-frame { position: absolute; top: 5%; left: 5%; width: 90%; height: 70%; border: 3px dashed rgba(255,255,255,0.3); border-radius: 25px; box-sizing: border-box; }
+        #result-card { position: absolute; bottom: 8%; left: 5%; width: 90%; background: rgba(5, 5, 10, 0.9); border-radius: 24px; padding: 30px 25px; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.1); text-align: center; backdrop-filter: blur(20px); box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        #result-persona { font-size: 28px; font-weight: 900; margin: 10px 0; letter-spacing: 1px; }
+        #capture-btn { position: absolute; bottom: 45px; left: 50%; transform: translateX(-50%); padding: 18px 50px; font-size: 18px; font-weight: bold; color: #fff; background: linear-gradient(45deg, #ff00cc, #3333ff); border: none; border-radius: 40px; cursor: pointer; pointer-events: auto; box-shadow: 0 0 30px rgba(255,0,204,0.5); font-family: 'Orbitron', sans-serif; }
+
+        /* 잘림 현상 방지를 위해 대대적으로 콤팩트 리프레시된 모달 뷰 인터페이스 */
+        #final-modal { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, #0c0f1d 0%, #020205 100%); z-index: 50; flex-direction: column; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }
+        #final-modal h2 { font-family: 'Orbitron', sans-serif; font-size: 18px; margin: 0 0 15px 0; color: #00ffcc; text-shadow: 0 0 10px #00ffcc; }
+        #captured-image { width: auto; max-width: 75%; height: auto; max-height: 42vh; border-radius: 18px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 15px 35px rgba(0,0,0,0.6); }
+        .action-container { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 15px; border-radius: 20px; width: 85%; display: flex; align-items: center; justify-content: space-around; backdrop-filter: blur(10px); margin-bottom: 20px; box-sizing: border-box; }
+        .qr-section img { width: 80px; height: 80px; background: #fff; padding: 6px; border-radius: 10px; }
+        .download-btn { padding: 14px 24px; font-size: 13px; font-weight: bold; background: #fff; color: #000; border-radius: 12px; text-decoration: none; box-shadow: 0 8px 16px rgba(255,255,255,0.1); font-family: 'Orbitron', sans-serif; }
+        .restart-btn { padding: 12px 35px; font-size: 13px; font-weight: 900; color: #ff00cc; background: rgba(255, 0, 204, 0.07); border: 1.5px solid rgba(255, 0, 204, 0.4); border-radius: 30px; cursor: pointer; font-family: 'Orbitron', sans-serif; letter-spacing: 2px; box-shadow: 0 0 15px rgba(255, 0, 204, 0.1); transition: all 0.3s; pointer-events: auto; }
+        .restart-btn:hover { background: rgba(255, 0, 204, 0.2); box-shadow: 0 0 25px rgba(255, 0, 204, 0.4); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <video id="input_video" autoplay playsinline></video>
+    <canvas id="output_canvas"></canvas>
+    <canvas id="three-canvas"></canvas>
+    
+    <div id="intro-ui">
+        <p class="intro-brand">VASELINE x STREET LAB</p>
+        <h1 class="intro-title">DIGITAL COCKTAIL<br>VIRTUAL DYEING</h1>
+        <div class="how-to-play">
+            <p><span class="step-badge">STAGE 01</span> 양손으로 네온 방울을 크래시하여 에셋을 충전하세요.</p>
+            <p><span class="step-badge">STAGE 02</span> 양손을 모아 3D 셰이커를 흔들어 옷을 염색하세요.</p>
+            <p><span class="step-badge">STAGE 03</span> 완벽하게 스캔된 나만의 프리미엄 립 ID 카드를 소장하세요.</p>
+        </div>
+        <button id="start-btn" onclick="startGame()">ENTER LAB</button>
+    </div>
+
+    <div class="ui-layer" id="main-ui">
+        <div id="timer-bar-bg"><div id="timer-bar"></div></div>
+        <div class="header">
+            <h2 id="step-title" style="margin:0; font-size:24px; font-family:'Orbitron', sans-serif; letter-spacing:2px;">STAGE 1. DROP CRASH</h2>
+            <p id="step-desc" style="margin:5px 0 0 0; color:#00ffcc; font-size:13px; font-weight:bold; letter-spacing:1px;">양손으로 네온 컬러 방울을 터뜨리세요!</p>
+        </div>
+        <div id="step2-ui">
+            <div id="shake-gauge-bg"><div id="shake-gauge"></div></div>
+            <p style="margin-top: 15px; font-size:13px; letter-spacing:2px; font-family:'Orbitron', sans-serif; color:#ff00cc; font-weight:900;">DYNAMIC SHAKING ACTIVE</p>
+        </div>
+    </div>
+
+    <div id="step3-ui">
+        <div id="photo-frame"></div>
+        <div id="result-card">
+            <p style="font-size:11px; color:#555; margin:0; letter-spacing:4px; font-weight:900; font-family:'Orbitron', sans-serif;">HYBRID LIP ID CARD</p>
+            <p id="result-persona">🌅 선셋 테킬라 글로우</p>
+            <p style="font-size:10px; color:#333; margin-top:12px; letter-spacing:6px;">|||| | |||| || ||| | || |||| | ||| ||</p>
+        </div>
+        <button id="capture-btn" onclick="captureScreen()">GET MY TICKET</button>
+    </div>
+
+    <div id="final-modal">
+        <h2>DOWNLOAD READY</h2>
+        <img id="captured-image" src="" alt="Captured" />
+        <div class="action-container">
+            <div class="qr-section">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://example.com" alt="QR" />
+            </div>
+            <a id="direct-download" class="download-btn" href="#" download="lip_id_card.jpg">SAVE IMAGE</a>
+        </div>
+        <button class="restart-btn" onclick="location.reload()">RESTART SYSTEM</button>
+    </div>
+</div>
+
+<script>
+    const videoElement = document.getElementById('input_video');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    
+    const introUi = document.getElementById('intro-ui');
+    const mainUi = document.getElementById('main-ui');
+    const stepTitle = document.getElementById('step-title');
+    const stepDesc = document.getElementById('step-desc');
+    const timerBar = document.getElementById('timer-bar');
+    const step2Ui = document.getElementById('step2-ui');
+    const step3Ui = document.getElementById('step3-ui');
+    const shakeGauge = document.getElementById('shake-gauge');
+    const resultPersona = document.getElementById('result-persona');
+    const finalModal = document.getElementById('final-modal');
+    const resultCard = document.getElementById('result-card'); // 💡 버그 수정 3: 누락된 DOM 변수 선언 추가
+
+    let currentStep = 0; 
+    let drops = [];
+    let suckedDrops = [];
+    let splashParticles = []; 
+    let previousMidpoint = null;
+    let shakeIntensity = 0;
+    let scanlineY = 0; 
+    let stepTimer = null; 
+    
+    const colorTypes = [
+        { name: "화이트", hex: "#ffffff", persona: "퓨어 글로우 마티니", emoji: "🍸" },
+        { name: "피치", hex: "#ffb7a1", persona: "러블리 로지 치즈", emoji: "🍑" },
+        { name: "그린", hex: "#4ade80", persona: "힐링 알로에 모히또", emoji: "🌿" },
+        { name: "코코아", hex: "#a16207", persona: "코코아 벨벳 패선드", emoji: "🤎" },
+        { name: "레드", hex: "#ef4444", persona: "어드벤스드 redundancy 사워", emoji: "🍒" },
+        { name: "퍼플", hex: "#a855f7", persona: "사이버 글로우 펀치", emoji: "🔮" },
+        { name: "오렌지", hex: "#f97316", persona: "선셋 테킬라 글로우", emoji: "🌅" },
+        { name: "네이비", hex: "#2563eb", persona: "oioi 미드나잇 소다", emoji: "🌌" }
+    ];
+    let collectedCounts = Array(8).fill(0);
+    let dominantColor = colorTypes[0];
+
+    let scene, camera3D, renderer, shaker3D, pointLight3D;
+    function init3D() {
+        const threeCanvas = document.getElementById('three-canvas');
+        scene = new THREE.Scene();
+        camera3D = new THREE.PerspectiveCamera(45, threeCanvas.clientWidth / threeCanvas.clientHeight, 0.1, 1000);
+        camera3D.position.z = 8;
+        renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
+        renderer.setSize(threeCanvas.clientWidth, threeCanvas.clientHeight);
+
+        const metalMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.95, roughness: 0.08 });
+        shaker3D = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.38, 1.6, 32), metalMat);
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.55, 0.35, 32), metalMat); cap.position.y = 0.95;
+        const top = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.28, 32), metalMat); top.position.y = 1.25;
+        shaker3D.add(body, cap, top);
+        
+        pointLight3D = new THREE.PointLight(0xff00cc, 2, 10);
+        pointLight3D.position.set(0, 2, 2);
+        
+        scene.add(shaker3D, new THREE.AmbientLight(0x222222), pointLight3D);
+        const topLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        topLight.position.set(2, 5, 3);
+        scene.add(topLight);
+
+        shaker3D.visible = false;
+        animate3D();
+    }
+    function animate3D() { requestAnimationFrame(animate3D); renderer.render(scene, camera3D); }
+    window.addEventListener('load', init3D);
+
+    function drawCover(ctx, img, targetW, targetH) {
+        const imgW = img.width, imgH = img.height;
+        const imgAR = imgW / imgH, targetAR = targetW / targetH;
+        let sx, sy, sWidth, sHeight;
+        if (imgAR > targetAR) { sWidth = imgH * targetAR; sHeight = imgH; sx = (imgW - sWidth) / 2; sy = 0; } 
+        else { sWidth = imgW; sHeight = imgW / targetAR; sx = 0; sy = (imgH - sHeight) / 2; }
+        ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, targetW, targetH);
+    }
+
+    const selfieSegmentation = new SelfieSegmentation({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`});
+    selfieSegmentation.setOptions({ modelSelection: 1 });
+    selfieSegmentation.onResults(onSegmentationResults);
+
+    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+    hands.onResults(onHandsResults);
+
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            await selfieSegmentation.send({image: videoElement});
+            await hands.send({image: videoElement});
+        },
+        width: 720, height: 1280
+    });
+    camera.start();
+
+    function onSegmentationResults(results) {
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        
+        canvasCtx.translate(canvasElement.width, 0);
+        canvasCtx.scale(-1, 1);
+        drawCover(canvasCtx, results.image, canvasElement.width, canvasElement.height);
+
+        if ((currentStep >= 2) && shakeIntensity > 0) {
+            if (!window.offscreenCanvas) {
+                window.offscreenCanvas = document.createElement('canvas');
+                window.offscreenCtx = window.offscreenCanvas.getContext('2d');
+            }
+            window.offscreenCanvas.width = canvasElement.width;
+            window.offscreenCanvas.height = canvasElement.height;
+            window.offscreenCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            drawCover(window.offscreenCtx, results.segmentationMask, canvasElement.width, canvasElement.height);
+            window.offscreenCtx.globalCompositeOperation = 'source-in';
+            window.offscreenCtx.fillStyle = dominantColor.hex;
+            window.offscreenCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // 💡 버그 수정 1: 스캔라인을 그리기 전에 모드를 'source-atop'으로 변경하여 기존 색상이 지워지는 현상 방지
+            window.offscreenCtx.globalCompositeOperation = 'source-atop';
+            
+            scanlineY = (scanlineY + 4) % canvasElement.height;
+            let grad = window.offscreenCtx.createLinearGradient(0, scanlineY - 40, 0, scanlineY + 40);
+            grad.addColorStop(0, "rgba(255,255,255,0)");
+            grad.addColorStop(0.5, "rgba(255,255,255,0.4)");
+            grad.addColorStop(1, "rgba(255,255,255,0)");
+            window.offscreenCtx.fillStyle = grad;
+            window.offscreenCtx.fillRect(0, scanlineY - 40, canvasElement.width, 80);
+            
+            window.offscreenCtx.globalCompositeOperation = 'source-over';
+            
+            canvasCtx.globalAlpha = (shakeIntensity / 100) * 0.85; 
+            
+            if (dominantColor.name === "화이트") {
+                canvasCtx.globalCompositeOperation = 'overlay';
+            } else {
+                canvasCtx.globalCompositeOperation = 'multiply';
+            }
+            canvasCtx.drawImage(window.offscreenCanvas, 0, 0, canvasElement.width, canvasElement.height);
+            
+            canvasCtx.globalAlpha = 1.0;
+            canvasCtx.globalCompositeOperation = 'source-over';
+        }
+
+        canvasCtx.setTransform(1, 0, 0, 1, 0, 0);
+        if (currentStep === 1 || currentStep === 2) handleVisualFX();
+        canvasCtx.restore();
+    }
+
+    function onHandsResults(results) {
+        if (currentStep === 0 || currentStep >= 3) return;
+
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            if (currentStep === 1) {
+                results.multiHandLandmarks.forEach(landmarks => {
+                    const x = (1 - landmarks[8].x) * canvasElement.width;
+                    const y = landmarks[8].y * canvasElement.height;
+                    
+                    let pulseRadius = 10 + Math.sin(Date.now() * 0.02) * 3;
+                    canvasCtx.beginPath(); canvasCtx.arc(x, y, pulseRadius, 0, Math.PI*2);
+                    canvasCtx.fillStyle = "rgba(255,255,255,0.9)"; canvasCtx.shadowBlur = 20; canvasCtx.shadowColor = "#00ffcc";
+                    canvasCtx.fill(); canvasCtx.closePath(); canvasCtx.shadowBlur = 0;
+
+                    for (let j = drops.length - 1; j >= 0; j--) {
+                        if (Math.hypot(x - drops[j].x, y - drops[j].y) < drops[j].radius + 20) {
+                            createSparks(drops[j].x, drops[j].y, drops[j].color.hex);
+                            suckedDrops.push(drops[j]); drops.splice(j, 1);
+                        }
+                    }
+                });
+            } else if (currentStep === 2) {
+                let sumX = 0, sumY = 0;
+                results.multiHandLandmarks.forEach(lm => { sumX += (1 - lm[0].x); sumY += lm[0].y; });
+                const midX = sumX / results.multiHandLandmarks.length;
+                const midY = sumY / results.multiHandLandmarks.length;
+
+                if (previousMidpoint) {
+                    const dist = Math.hypot(midX - previousMidpoint.x, midY - previousMidpoint.y);
+                    
+                    if (dist > 0.015) {
+                        // 💡 버그 수정 2: 0.42 고정값 대신 움직임 거리(dist)에 비례하게 연산 수식 원복
+                        shakeIntensity += (dist * 90); 
+                        if (shakeIntensity >= 100) { 
+                            shakeIntensity = 100; 
+                            clearInterval(stepTimer);
+                            setTimeout(startStep3, 400); 
+                        }
+                        shakeGauge.style.width = `${shakeIntensity}%`;
+                        
+                        if (Math.random() < 0.4) {
+                            createSparks(midX * canvasElement.width, midY * canvasElement.height, dominantColor.hex);
+                        }
+                    }
+                }
+                previousMidpoint = { x: midX, y: midY };
+                
+                shaker3D.position.set((midX - 0.5) * 6, -(midY - 0.5) * 10 - 1.0, 0);
+                shaker3D.rotation.z = (midX - (previousMidpoint?.x || midX)) * 35;
+                shaker3D.rotation.x = Math.sin(Date.now() * 0.06) * (shakeIntensity / 100) * 2;
+                pointLight3D.position.set((midX - 0.5) * 6, -(midY - 0.5) * 10 + 1.0, 2);
+            }
+        }
+    }
+
+    function createSparks(x, y, color) {
+        for (let i = 0; i < 15; i++) {
+            splashParticles.push({
+                x: x, y: y,
+                vx: (Math.random() - 0.5) * 12, vy: (Math.random() - 0.5) * 12 - 3,
+                radius: 2 + Math.random() * 3, color: color, alpha: 1, life: 1.0
+            });
+        }
+    }
+
+    function handleVisualFX() {
+        for (let i = splashParticles.length - 1; i >= 0; i--) {
+            let p = splashParticles[i];
+            p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.life -= 0.03; p.alpha = p.life;
+            if (p.life <= 0) { splashParticles.splice(i, 1); continue; }
+            canvasCtx.beginPath(); canvasCtx.arc(p.x, p.y, p.radius, 0, Math.PI*2);
+            canvasCtx.fillStyle = p.color; canvasCtx.globalAlpha = p.alpha;
+            canvasCtx.fill(); canvasCtx.closePath();
+        }
+        canvasCtx.globalAlpha = 1.0;
+
+        if (currentStep === 1) {
+            const targetX = canvasElement.width / 2, targetY = canvasElement.height - 80;
+            canvasCtx.font = "65px Arial"; canvasCtx.textAlign = "center";
+            canvasCtx.fillText("🍸", targetX, targetY);
+
+            if (Math.random() < 0.09) {
+                const idx = Math.floor(Math.random() * 8);
+                drops.push({ x: 40 + Math.random() * (canvasElement.width - 80), y: -40, radius: 24, color: colorTypes[idx], speed: 4 + Math.random() * 4, idx: idx });
+            }
+
+            for (let i = drops.length - 1; i >= 0; i--) {
+                drops[i].y += drops[i].speed;
+                drawNeonBubble(drops[i].x, drops[i].y, drops[i].radius, drops[i].color.hex);
+                if (drops[i].y > canvasElement.height) drops.splice(i, 1);
+            }
+
+            for (let i = suckedDrops.length - 1; i >= 0; i--) {
+                suckedDrops[i].x += (targetX - suckedDrops[i].x) * 0.18; suckedDrops[i].y += (targetY - suckedDrops[i].y) * 0.18; suckedDrops[i].radius *= 0.82;
+                drawNeonBubble(suckedDrops[i].x, suckedDrops[i].y, suckedDrops[i].radius, suckedDrops[i].color.hex);
+                if (suckedDrops[i].radius < 2) { collectedCounts[suckedDrops[i].idx]++; suckedDrops.splice(i, 1); }
+            }
+        }
+    }
+
+    function drawNeonBubble(x, y, r, color) {
+    canvasCtx.save(); canvasCtx.beginPath(); canvasCtx.arc(x, y, r, 0, Math.PI*2);
+    // 💡 y - r/3, r/8 구조를 정상적으로 6개 인자로 복구했습니다.
+    const g = canvasCtx.createRadialGradient(x - r/3, y - r/3, r/8, x, y, r); 
+    g.addColorStop(0, '#ffffff'); g.addColorStop(0.2, 'rgba(255,255,255,0.9)'); g.addColorStop(0.8, color); g.addColorStop(1, 'rgba(0,0,0,0.4)');
+    canvasCtx.fillStyle = g; canvasCtx.shadowBlur = 25; canvasCtx.shadowColor = color;
+    canvasCtx.fill(); canvasCtx.restore();
+}
+
+    function startGame() { introUi.style.display="none"; mainUi.style.display="flex"; currentStep=1; startTimer(15, startStep2); }
+    
+    function startTimer(sec, next) {
+        let left = sec;
+        const iv = setInterval(() => {
+            left--; timerBar.style.width = `${(left/sec)*100}%`;
+            if (left <= 0) { clearInterval(iv); next(); }
+        }, 1000);
+    }
+    
+    function startStep2() {
+        currentStep = 2; drops = []; suckedDrops = [];
+        stepTitle.innerText = "STAGE 2. VIRTUAL DYEING";
+        stepDesc.style.color = "#ff00cc";
+        stepDesc.innerText = "양손으로 3D 셰이커를 흔들어 의상을 믹싱 염색하세요!";
+        shaker3D.visible = true;
+        
+        const maxIdx = collectedCounts.indexOf(Math.max(...collectedCounts));
+        dominantColor = colorTypes[maxIdx];
+        pointLight3D.color.setHex(parseInt(dominantColor.hex.replace("#", "0x")));
+
+        let timeLeft = 15;
+        timerBar.style.transition = "none";
+        timerBar.style.width = "100%";
+        setTimeout(() => {
+            timerBar.style.transition = "width 15s linear";
+            timerBar.style.width = "0%";
+        }, 50);
+
+        stepTimer = setInterval(() => {
+            timeLeft--;
+            if (timeLeft <= 0) {
+                clearInterval(stepTimer);
+                startStep3();
+            }
+        }, 1000);
+    }
+    
+    function startStep3() {
+        currentStep = 3; 
+        shaker3D.visible = false;
+        shakeIntensity = 100; 
+        mainUi.style.display = "none"; step3Ui.style.display = "block";
+        resultPersona.innerText = `${dominantColor.emoji} ${dominantColor.persona}`;
+        resultPersona.style.color = dominantColor.hex;
+        resultCard.style.borderColor = dominantColor.hex;
+        resultCard.style.boxShadow = `0 20px 50px ${dominantColor.hex}33`;
+    }
+
+    function captureScreen() {
+        const width = canvasElement.width;
+        const height = canvasElement.height;
+        
+        canvasCtx.lineWidth = 14; canvasCtx.strokeStyle = "rgba(255,255,255,0.95)";
+        canvasCtx.strokeRect(width * 0.05, height * 0.05, width * 0.9, height * 0.72);
+        
+        canvasCtx.fillStyle = "rgba(10, 10, 15, 0.96)";
+        const cardY = height * 0.76; const cardHeight = height * 0.18;
+        canvasCtx.fillRect(width * 0.05, cardY, width * 0.9, cardHeight);
+        canvasCtx.lineWidth = 1; canvasCtx.strokeStyle = "rgba(255,255,255,0.1)";
+        canvasCtx.strokeRect(width * 0.05, cardY, width * 0.9, cardHeight);
+        
+        canvasCtx.fillStyle = "#666"; canvasCtx.font = "900 13px 'Orbitron'"; canvasCtx.textAlign = "center"; canvasCtx.letterSpacing = "4px";
+        canvasCtx.fillText("HYBRID LIP ID CARD", width / 2, cardY + 35); canvasCtx.letterSpacing = "0px";
+        
+        canvasCtx.fillStyle = dominantColor.hex; canvasCtx.font = "900 24px 'Noto Sans KR'";
+        canvasCtx.fillText(`${dominantColor.emoji} ${dominantColor.persona}`, width / 2, cardY + 80);
+        
+        canvasCtx.fillStyle = "#333"; canvasCtx.font = "14px monospace"; canvasCtx.letterSpacing = "6px";
+        canvasCtx.fillText("|||| | |||| || ||| | || |||| | ||| ||", width / 2, cardY + 125);
+        
+        const dataURL = canvasElement.toDataURL('image/jpeg', 0.95);
+        document.getElementById('captured-image').src = dataURL;
+        
+        document.getElementById('direct-download').href = dataURL; 
+        
+        step3Ui.style.display = "none"; finalModal.style.display = "flex";
+    }
+
+    function resize() {
+        canvasElement.width = canvasElement.clientWidth; canvasElement.height = canvasElement.clientHeight;
+        if(renderer) {
+            renderer.setSize(canvasElement.width, canvasElement.height);
+            camera3D.aspect = canvasElement.width / canvasElement.height; camera3D.updateProjectionMatrix();
+        }
+    }
+    window.addEventListener('resize', resize);
+    resize();
+</script>
+</body>
+</html>

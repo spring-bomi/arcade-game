@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>아케이드 FPS - 손가락 권총 (Finger Pistol)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        /* 기본 스타일 및 아케이드 네온 테마 */
+        body {
+            margin: 0; padding: 0;
+            background-color: #05050f;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace; /* 아케이드 느낌 폰트 */
+            overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            width: 960px; height: 720px;
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.2);
+            border: 4px solid #0ff; /* 네온 민트 테두리 */
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        /* 입력 비디오 (숨김 처리하되 인식에는 사용) */
+        #input-video {
+            position: absolute;
+            width: 100%; height: 100%;
+            transform: scaleX(-1); /* 거울 모드 */
+            object-fit: cover;
+            opacity: 0.1; /* 배경에 희미하게 보이게 함 */
+            z-index: 1;
+        }
+
+        /* 게임 렌더링 캔버스 */
+        #game-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 2;
+        }
+
+        /* UI 레이어 (점수, 시간 등) */
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none; /* 클릭 통과 */
+            z-index: 3;
+            padding: 30px;
+            box-sizing: border-box;
+            display: flex; flex-direction: column; justify-content: space-between;
+        }
+
+        .ui-header {
+            display: flex; justify-content: space-between;
+            font-size: 32px; font-weight: bold;
+            text-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
+        }
+        .score-label { color: #0ff; }
+        .time-label { color: #f0f; } /* 마젠타 색상 */
+
+        /* 게임 상태 오버레이 (로딩, 시작, 결과) */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 10;
+            gap: 20px;
+        }
+
+        .overlay h1 {
+            font-size: 64px; margin: 0;
+            color: #0ff;
+            text-shadow: 0 0 20px #0ff;
+            animation: pulse 1.5s infinite;
+        }
+
+        .overlay p { font-size: 20px; color: #ccc; text-align: center; line-height: 1.6; }
+
+        .btn-start {
+            padding: 15px 40px; font-size: 28px;
+            background: transparent;
+            border: 3px solid #f0f; color: #f0f;
+            cursor: pointer;
+            border-radius: 5px;
+            text-shadow: 0 0 10px #f0f;
+            box-shadow: 0 0 15px rgba(255, 0, 255, 0.3);
+            transition: all 0.2s;
+        }
+        .btn-start:hover {
+            background: #f0f; color: #fff;
+            box-shadow: 0 0 30px rgba(255, 0, 255, 0.6);
+        }
+
+        /* 로딩 스피너 */
+        .loader {
+            border: 8px solid #333;
+            border-top: 8px solid #0ff;
+            border-radius: 50%;
+            width: 60px; height: 60px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <video id="input-video" playsinline autoplay></video>
+        
+        <canvas id="game-canvas" width="960" height="720"></canvas>
+
+        <div id="ui-layer">
+            <div class="ui-header">
+                <div>SCORE: <span id="score" class="score-label">0</span></div>
+                <div>TIME: <span id="time" class="time-label">30</span>s</div>
+            </div>
+            <div style="font-size: 14px; color: #666; text-align: center;">가이드: 손가락 권총 모양 유지 + 엄지 까딱 = 발사</div>
+        </div>
+
+        <div id="overlay-loading" class="overlay">
+            <div class="loader"></div>
+            <h1>SYSTEM LOADING</h1>
+            <p>카메라 권한을 허용하고<br>핸드트래킹 모듈이 준비될 때까지 기다려주세요.</p>
+        </div>
+
+        <div id="overlay-start" class="overlay hidden">
+            <h1>FINGER PISTOL</h1>
+            <p>손으로 '권총 모양(👉)'을 만들어 화면을 조준하세요.<br><strong>엄지손가락을 아래로 접으면(까딱)</strong> 발사됩니다.</p>
+            <button class="btn-start" onclick="startGame()">START GAME</button>
+        </div>
+
+        <div id="overlay-result" class="overlay hidden">
+            <h1>GAME OVER</h1>
+            <p>최종 점수</p>
+            <div style="font-size: 72px; color: #0ff; text-shadow: 0 0 20px #0ff; font-weight: bold;" id="final-score">0</div>
+            <button class="btn-start" onclick="startGame()" style="margin-top: 20px;">REPLAY</button>
+        </div>
+    </div>
+
+    <script>
+        // DOM 요소 정의
+        const videoElement = document.getElementById('input-video');
+        const canvasElement = document.getElementById('game-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        
+        const uiScore = document.getElementById('score');
+        const uiTime = document.getElementById('time');
+        const finalScoreDisplay = document.getElementById('final-score');
+        
+        const overlayLoading = document.getElementById('overlay-loading');
+        const overlayStart = document.getElementById('overlay-start');
+        const overlayResult = document.getElementById('overlay-result');
+
+        // 게임 상태 및 변수
+        let gameState = 'LOADING'; // LOADING, READY, PLAYING, GAMEOVER
+        let score = 0;
+        let timeLeft = 30;
+        let gameTimerInterval = null;
+        
+        // 타겟(과녁) 관리
+        const targetConfig = { radius: 35, color: '#f0f', shadow: '#f0f', duration: 2500 }; // 과녁 설정
+        let currentTarget = null; // 현재 화면에 있는 과녁 정보
+        let targetSpawnTimer = null;
+
+        // 핸드트래킹 관련 변수
+        let currentAimPoint = { x: -100, y: -100 }; // 조준점 (검지 끝)
+        let isGunPoseDetected = false; // 권총 포즈 여부
+        let isThumbFolded = false; // 엄지가 접혔는지 여부 (사격 판정용)
+        let lastFiredTime = 0; // 연사 방지용 시간 기록
+
+        // --- 1. MediaPipe Hands 설정 ---
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1, // 한 손만 인식
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7, // 인식 정확도 상향
+            minTrackingConfidence: 0.7
+        });
+
+        // 결과 수신 콜백 함수
+        hands.onResults(onResults);
+
+        // 웹캠 카메라 설정
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+
+        // 초기화 시작
+        camera.start().then(() => {
+            console.log("Camera started, waiting for Hands model...");
+        });
+
+        // --- 2. 핵심 로직: 핸드트래킹 결과 처리 ---
+        function onResults(results) {
+            // 로딩 완료 처리
+            if (gameState === 'LOADING') {
+                gameState = 'READY';
+                overlayLoading.classList.add('hidden');
+                overlayStart.classList.remove('hidden');
+            }
+
+            // 캔버스 초기화
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            // 손가락 인식 데이터가 있는 경우
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+
+                // 1) 포즈 및 사격 인식 (로직 함수)
+                checkPoseAndShoot(landmarks);
+
+                // 2) 조준점 업데이트 (검지 손가락 끝 = 8번 마디)
+                // 거울 모드이므로 X축 반전 처리
+                currentAimPoint.x = (1 - landmarks[8].x) * canvasElement.width;
+                currentAimPoint.y = landmarks[8].y * canvasElement.height;
+
+            } else {
+                // 손이 화면에 없으면 초기화
+                isGunPoseDetected = false;
+                currentAimPoint = { x: -100, y: -100 };
+            }
+
+            // 3) 게임 화면 그리기 (플레이 중일 때만 타겟 등 렌더링)
+            if (gameState === 'PLAYING') {
+                drawTarget();
+            }
+
+            // 4) 조준선 그리기 (항상 맨 위에 렌더링)
+            drawCrosshair();
+
+            canvasCtx.restore();
+        }
+
+        // --- 3. 제스처 분석 함수: 권총 포즈 및 엄지 까딱 사격 인식 ---
+        function checkPoseAndShoot(landmarks) {
+            // 미디어파이프 손가락 마디 인덱스:
+            // 엄지: 1(베이스), 2, 3, 4(끝)
+            // 검지: 5(베이스), 6, 7, 8(끝)
+            // 중지/약지/소지 끝: 12, 16, 20
+
+            // A) 권총 포즈 기본 조건 확인 (검지는 펴고, 중지/약지/소지는 굽힘)
+            // 펴짐 판정: 베이스 마디 Y값이 끝 마디 Y값보다 크면 펴짐 (화면 기준 아래가 Y값이 큼)
+            const isIndexExtended = landmarks[6].y > landmarks[8].y;
+            const isMiddleFolded = landmarks[10].y < landmarks[12].y;
+            const isRingFolded = landmarks[14].y < landmarks[16].y;
+
+            // 권총 포즈 활성화
+            isGunPoseDetected = isIndexExtended && isMiddleFolded && isRingFolded;
+
+            if (!isGunPoseDetected) {
+                isThumbFolded = false; // 포즈 풀리면 엄지 상태도 초기화
+                return; 
+            }
+
+            // B) 사격 인식: 엄지손가락 상태 확인 (굽힘 정도)
+            // 검지 베이스(5번)와 엄지 끝(4번)의 수직 거리를 기준으로 엄지 굽힘 판정 (세밀한 튜닝 필요)
+            // 엄지 끝 Y값이 검지 베이스 Y값에 가까워지거나 아래로 내려가면 '접힘'으로 간주
+            const thumbY = landmarks[4].y;
+            const indexBaseY = landmarks[5].y;
+            const thumbThreshold = indexBaseY - 0.05; // 임계값 (엄지가 까딱 내려가는 지점)
+
+            const currentThumbFolded = thumbY > thumbThreshold;
+
+            // C) 트리거 판정 (엄지를 '까딱' 접는 순간 인식 - Edge Detection)
+            // 이전에 펴져 있다가 지금 접힌 경우에만 발사
+            if (!isThumbFolded && currentThumbFolded) {
+                processShoot();
+            }
+
+            // 엄지 상태 업데이트
+            isThumbFolded = currentThumbFolded;
+        }
+
+        // --- 4. 사격 처리 로직 (타겟 적중 확인 및 효과) ---
+        function processShoot() {
+            // 플레이 상태가 아니거나 연사 쿨타임(200ms) 확인
+            const now = Date.now();
+            if (gameState !== 'PLAYING' || now - lastFiredTime < 200) return;
+            lastFiredTime = now;
+
+            console.log("BANG!"); // 사격 로그
+
+            // 타겟 적중 확인
+            if (currentTarget) {
+                // 조준점과 타겟 중심 사이의 거리 계산 (피타고라스)
+                const dist = Math.hypot(currentAimPoint.x - currentTarget.x, currentAimPoint.y - currentTarget.y);
+                
+                // 적중 범위 내인 경우
+                if (dist < targetConfig.radius + 10) { // 판정 후하게 +10px
+                    hitTarget();
+                }
+            }
+
+            // 사격 시각 효과 (화면 잠깐 반짝임)
+            canvasCtx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+        }
+
+        // --- 5. 게임 드로잉 함수들 ---
+
+        // 조준선(Crosshair) 그리기
+        function drawCrosshair() {
+            if (currentAimPoint.x < 0) return; // 화면 밖이면 안 그림
+
+            const x = currentAimPoint.x;
+            const y = currentAimPoint.y;
+            const size = 25;
+            
+            canvasCtx.lineWidth = 3;
+            
+            // 상태에 따른 조준선 색상 (권총포즈 미지원이면 붉은색, 지원하면 민트색)
+            if (isGunPoseDetected) {
+                canvasCtx.strokeStyle = '#0ff'; // 민트 네온
+                canvasCtx.shadowColor = '#0ff';
+            } else {
+                canvasCtx.strokeStyle = '#f33'; // 경고 빨강
+                canvasCtx.shadowColor = '#f33';
+            }
+            canvasCtx.shadowBlur = 15;
+
+            // 원형 조준선
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, size, 0, Math.PI * 2);
+            canvasCtx.stroke();
+
+            // 십자선
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(x - size - 5, y); canvasCtx.lineTo(x + size + 5, y);
+            canvasCtx.moveTo(x, y - size - 5); canvasCtx.lineTo(x, y + size + 5);
+            canvasCtx.stroke();
+            
+            // 중심점
+            canvasCtx.fillStyle = canvasCtx.strokeStyle;
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, 3, 0, Math.PI * 2);
+            canvasCtx.fill();
+            
+            canvasCtx.shadowBlur = 0; // 그림자 초기화
+        }
+
+        // 과녁 타겟 그리기
+        function drawTarget() {
+            if (!currentTarget) return;
+
+            const { x, y, radius, color, shadow } = currentTarget;
+
+            canvasCtx.save();
+            canvasCtx.shadowBlur = 20;
+            canvasCtx.shadowColor = shadow;
+            
+            // 아케이드 느낌의 이중 원 타겟
+            canvasCtx.fillStyle = color;
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, radius, 0, Math.PI * 2);
+            canvasCtx.fill();
+
+            canvasCtx.strokeStyle = '#fff';
+            canvasCtx.lineWidth = 3;
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, radius * 0.6, 0, Math.PI * 2); // 안쪽 원
+            canvasCtx.stroke();
+
+            canvasCtx.restore();
+        }
+
+        // --- 6. 게임 흐름 제어 함수들 ---
+
+        function startGame() {
+            // UI 초기화
+            score = 0;
+            timeLeft = 30;
+            uiScore.innerText = score;
+            uiTime.innerText = timeLeft;
+            
+            // 오버레이 숨기기
+            overlayStart.classList.add('hidden');
+            overlayResult.classList.add('hidden');
+            
+            gameState = 'PLAYING';
+
+            // 타이머 시작
+            clearInterval(gameTimerInterval);
+            gameTimerInterval = setInterval(() => {
+                timeLeft--;
+                uiTime.innerText = timeLeft;
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            // 첫 타겟 생성
+            spawnTarget();
+        }
+
+        function endGame() {
+            gameState = 'GAMEOVER';
+            clearInterval(gameTimerInterval);
+            clearTimeout(targetSpawnTimer);
+            currentTarget = null;
+            
+            finalScoreDisplay.innerText = score;
+            overlayResult.classList.remove('hidden');
+        }
+
+        // 타겟 무작위 생성
+        function spawnTarget() {
+            if (gameState !== 'PLAYING') return;
+
+            // 캔버스 가장자리를 제외한 여백 공간 계산
+            const margin = targetConfig.radius + 50;
+            const spawnWidth = canvasElement.width - margin * 2;
+            const spawnHeight = canvasElement.height - margin * 2;
+
+            currentTarget = {
+                x: Math.random() * spawnWidth + margin,
+                y: Math.random() * spawnHeight + margin,
+                radius: targetConfig.radius,
+                color: targetConfig.color,
+                shadow: targetConfig.shadow
+            };
+
+            // 일정 시간 후 타겟 사라지고 새로 생성 (Miss 처리)
+            clearTimeout(targetSpawnTimer);
+            targetSpawnTimer = setTimeout(() => {
+                if (gameState === 'PLAYING') {
+                    spawnTarget(); // 미스 시 그냥 새로 생성
+                }
+            }, targetConfig.duration);
+        }
+
+        // 타겟 적중 시 처리
+        function hitTarget() {
+            score += 100;
+            uiScore.innerText = score;
+            
+            // 단순 파티클 효과 대신 타겟 즉시 제거 후 다음 타겟 생성
+            currentTarget = null;
+            clearTimeout(targetSpawnTimer);
+            
+            // 약간의 대기 후 다음 타겟 생성 (리듬감)
+            setTimeout(spawnTarget, 200);
+        }
+
+    </script>
+</body>
+</html>

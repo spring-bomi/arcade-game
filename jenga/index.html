@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>마이크로 핀치 젠가 2.5D (Physics Match)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --bg-color: #f1f3f5;
+            --container-bg: #ffffff;
+            --text-main: #212529;
+            --text-muted: #868e96;
+            --accent: #ff6b6b;
+            --accent-green: #37b24d;
+            --border-light: #e9ecef;
+            --p1-color: #1c7ed6; 
+            --p2-color: #fd7e14; 
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, system-ui, sans-serif; user-select: none; -webkit-user-select: none; }
+        body { background-color: var(--bg-color); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; overflow: hidden; }
+        
+        .game-container {
+            width: 100%;
+            max-width: 420px;
+            background: var(--container-bg);
+            border-radius: 28px;
+            padding: 20px;
+            box-shadow: 0 16px 32px rgba(0,0,0,0.06);
+            border: 1px solid var(--border-light);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        header { text-align: center; margin-bottom: 14px; }
+        header h1 { font-size: 19px; font-weight: 800; letter-spacing: -0.5px; }
+        header p { font-size: 11px; color: var(--text-muted); }
+
+        #canvas-wrapper {
+            width: 100%;
+            aspect-ratio: 3 / 4;
+            background: #ffffff;
+            border-radius: 20px;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid var(--border-light);
+        }
+
+        canvas { width: 100%; height: 100%; display: block; }
+
+        .camera-window {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 84px;
+            height: 63px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid #ffffff;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transform: scaleX(-1);
+            z-index: 5;
+            background: #000;
+        }
+        #webcam { width: 100%; height: 100%; object-fit: cover; }
+
+        .dashboard {
+            display: flex;
+            justify-content: space-between;
+            background: #f8f9fa;
+            padding: 14px;
+            border-radius: 16px;
+            margin-top: 14px;
+            font-size: 12px;
+            border: 1px solid var(--border-light);
+        }
+        .stat-box { display: flex; flex-direction: column; gap: 2px; }
+        .stat-label { color: var(--text-muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-value { font-weight: 800; font-size: 15px; }
+
+        .start-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.98);
+            border-radius: 28px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 32px;
+            z-index: 100;
+            text-align: center;
+        }
+        .btn-start {
+            background: #121212; color: #fff; border: none;
+            padding: 14px 36px; font-size: 14px; font-weight: 700;
+            border-radius: 30px; cursor: pointer; margin-top: 24px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        }
+        .instructions { text-align: left; font-size: 12px; color: #495057; margin: 18px 0; line-height: 1.7; }
+    </style>
+</head>
+<body>
+
+    <div class="game-container">
+        <header>
+            <h1>Micro Pinch Jenga 2.5D ⚖️</h1>
+            <p>실시간 무게중심 연산 및 붕괴 모션 탑재 젠가 배틀</p>
+        </header>
+
+        <div id="canvas-wrapper">
+            <div class="camera-window">
+                <video id="webcam" autoplay playsinline muted></video>
+            </div>
+            <canvas id="gameCanvas"></canvas>
+        </div>
+
+        <div class="dashboard">
+            <div class="stat-box"><span class="stat-label">현재 턴</span><span id="turn-txt" class="stat-value" style="color:var(--p1-color)">Player 1</span></div>
+            <div class="stat-box" style="align-items:center;"><span class="stat-label">집게 제스처</span><span id="grab-txt" class="stat-value" style="color:var(--text-muted)">OPEN</span></div>
+            <div class="stat-box" style="align-items:flex-end;"><span class="stat-label">안전 추출</span><span id="score-txt" class="stat-value">0개</span></div>
+        </div>
+
+        <div id="start-screen" class="start-overlay">
+            <div style="font-size: 44px; margin-bottom: 12px;">⚖️</div>
+            <h2 id="modal-title" style="font-weight: 800; font-size: 19px; letter-spacing:-0.5px;">물리 무게중심 핀치 젠가</h2>
+            <div class="instructions">
+                <p>• <b>[무게중심 시스템]</b> 이제 한 층에서 블록을 두 개 빼내도 위의 탑 무게중심이 지지 구역 내에 있다면 안전하게 버텨냅니다.</p>
+                <p>• <b>[실시간 붕괴 모션]</b> 균형이 맞지 않는 순간, 탑이 조각조각 부서지며 바닥으로 쏟아지는 물리 역학 연출이 진행됩니다.</p>
+                <p>• 드래그를 급격하게 하거나 지지대를 잘못 빼면 실시간으로 무게 중심이 틀어져 <b>뽑는 도중에 무너질 수 있습니다!</b></p>
+            </div>
+            <button id="btn-start" class="btn-start">카메라 권한 승인 및 시작</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const GAME_W = 400;
+        const GAME_H = 533;
+        canvas.width = GAME_W;
+        canvas.height = GAME_H;
+
+        const config = {
+            pinchThreshold: 0.045,
+            layerCount: 10,
+            blockW: 20,   
+            blockH: 14,   
+            blockL: 60    
+        };
+
+        let isCameraActive = false;
+        let isGameOver = false;
+        let isPinching = false;
+        let score = 0;
+        
+        let currentPlayer = 1;      
+        let grabLockOut = false;    
+
+        // 무게중심 및 무너짐 연출용 전역 플래그
+        let isCollapsing = false;
+        let collapseTimer = 0;
+
+        let cursor = { x: GAME_W / 2, y: GAME_H / 2 };
+        let blocks = [];
+        let grabbedBlock = null;
+
+        function isoToScreen(isoX, isoY, isoZ) {
+            const angle = Math.PI / 6; 
+            const startX = GAME_W / 2;
+            const startY = GAME_H - 140; 
+
+            const screenX = startX + (isoX - isoZ) * Math.cos(angle);
+            const screenY = startY + (isoX + isoZ) * Math.sin(angle) - isoY;
+            return { x: screenX, y: screenY };
+        }
+
+        class JengaBlock {
+            constructor(layer, index, isEven) {
+                this.id = Math.random().toString(36).substr(2, 9);
+                this.layer = layer;
+                this.index = index; 
+                this.isEven = isEven;
+                this.isExtracted = false;
+                this.isoY = layer * config.blockH;
+                
+                // 역학 연출용 물리 변수 배정
+                this.vx = 0; this.vy = 0; this.vz = 0;
+                this.screenRot = 0; this.vScreenRot = 0;
+
+                const offset = (index - 1) * config.blockW; 
+                if (isEven) {
+                    this.isoX = 0;
+                    this.isoZ = offset;
+                } else {
+                    this.isoX = offset;
+                    this.isoZ = 0;
+                }
+            }
+
+            isPointInside(screenX, screenY) {
+                if (isCollapsing) return false;
+                const center = isoToScreen(this.isoX, this.isoY + config.blockH/2, this.isoZ);
+                const checkW = 35; 
+                const checkH = 18; 
+                return (
+                    screenX >= center.x - checkW && screenX <= center.x + checkW &&
+                    screenY >= center.y - checkH && screenY <= center.y + checkH
+                );
+            }
+
+            draw() {
+                if (this.isExtracted) return;
+
+                const w = config.blockW / 2;
+                const h = config.blockH;
+                const l = config.blockL / 2;
+
+                let baseColor, topColor, sideColor;
+                if (this.layer % 2 === 0) {
+                    baseColor = "#e6ccb2"; topColor = "#ede0d4"; sideColor = "#ddb892";
+                } else {
+                    baseColor = "#ddb892"; topColor = "#f4ebd0"; sideColor = "#b79457";
+                }
+
+                // 무너짐 진행 시 조준 구체를 중심으로 평면 스크린 회전 트랜스폼 체결
+                if (isCollapsing) {
+                    const center = isoToScreen(this.isoX, this.isoY + h/2, this.isoZ);
+                    ctx.save();
+                    ctx.translate(center.x, center.y);
+                    ctx.rotate(this.screenRot);
+                    ctx.translate(-center.x, -center.y);
+                }
+
+                let corners = [];
+                if (this.isEven) {
+                    corners = [
+                        isoToScreen(this.isoX - l, this.isoY, this.isoZ - w),
+                        isoToScreen(this.isoX + l, this.isoY, this.isoZ - w),
+                        isoToScreen(this.isoX + l, this.isoY, this.isoZ + w),
+                        isoToScreen(this.isoX - l, this.isoY, this.isoZ + w),
+                        isoToScreen(this.isoX - l, this.isoY + h, this.isoZ - w),
+                        isoToScreen(this.isoX + l, this.isoY + h, this.isoZ - w),
+                        isoToScreen(this.isoX + l, this.isoY + h, this.isoZ + w),
+                        isoToScreen(this.isoX - l, this.isoY + h, this.isoZ + w)
+                    ];
+                } else {
+                    corners = [
+                        isoToScreen(this.isoX - w, this.isoY, this.isoZ - l),
+                        isoToScreen(this.isoX + w, this.isoY, this.isoZ - l),
+                        isoToScreen(this.isoX + w, this.isoY, this.isoZ + l),
+                        isoToScreen(this.isoX - w, this.isoY, this.isoZ + l),
+                        isoToScreen(this.isoX - w, this.isoY + h, this.isoZ - l),
+                        isoToScreen(this.isoX + w, this.isoY + h, this.isoZ - l),
+                        isoToScreen(this.isoX + w, this.isoY + h, this.isoZ + l),
+                        isoToScreen(this.isoX - w, this.isoY + h, this.isoZ + l)
+                    ];
+                }
+
+                ctx.fillStyle = sideColor;
+                ctx.beginPath();
+                ctx.moveTo(corners[1].x, corners[1].y);
+                ctx.lineTo(corners[2].x, corners[2].y);
+                ctx.lineTo(corners[6].x, corners[6].y);
+                ctx.lineTo(corners[5].x, corners[5].y);
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+
+                ctx.fillStyle = baseColor;
+                ctx.beginPath();
+                ctx.moveTo(corners[2].x, corners[2].y);
+                ctx.lineTo(corners[3].x, corners[3].y);
+                ctx.lineTo(corners[7].x, corners[7].y);
+                ctx.lineTo(corners[6].x, corners[6].y);
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+
+                ctx.fillStyle = topColor;
+                ctx.beginPath();
+                ctx.moveTo(corners[4].x, corners[4].y);
+                ctx.lineTo(corners[5].x, corners[5].y);
+                ctx.lineTo(corners[6].x, corners[6].y);
+                ctx.lineTo(corners[7].x, corners[7].y);
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+
+                if (isCollapsing) {
+                    ctx.restore();
+                }
+            }
+        }
+
+        function initGame() {
+            blocks = [];
+            score = 0;
+            grabbedBlock = null;
+            isGameOver = false;
+            isCollapsing = false;
+            collapseTimer = 0;
+            currentPlayer = 1;
+            grabLockOut = false; 
+            document.getElementById('score-txt').innerText = "0개";
+            updateTurnUI();
+
+            for (let l = 0; l < config.layerCount; l++) {
+                const isEven = (l % 2 === 0);
+                for (let i = 0; i < 3; i++) {
+                    blocks.push(new JengaBlock(l, i, isEven));
+                }
+            }
+        }
+
+        function updateTurnUI() {
+            const turnTxt = document.getElementById('turn-txt');
+            turnTxt.innerText = `Player ${currentPlayer}`;
+            if (currentPlayer === 1) {
+                turnTxt.style.color = "var(--p1-color)";
+            } else {
+                turnTxt.style.color = "var(--p2-color)";
+            }
+        }
+
+        const videoElement = document.getElementById('webcam');
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 0, 
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults(onHandResults);
+
+        document.getElementById('btn-start').addEventListener('click', async () => {
+            document.getElementById('btn-start').innerText = "카메라 준비 중...";
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 320, height: 240, facingMode: 'user' }
+                });
+                videoElement.srcObject = stream;
+                await videoElement.play();
+
+                initGame();
+                document.getElementById('start-screen').style.display = 'none';
+                
+                const camera = new Camera(videoElement, {
+                    onFrame: async () => { if(!isGameOver) await hands.send({ image: videoElement }); },
+                    width: 320, height: 240
+                });
+                camera.start();
+                
+                isCameraActive = true;
+                requestAnimationFrame(gameLoop);
+            } catch (err) {
+                alert("카메라 스트림 연동 에러가 발생했습니다.");
+            }
+        });
+
+        function onHandResults(results) {
+            if (!isCameraActive || isGameOver || isCollapsing) return;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                const thumb = landmarks[4];
+                const index = landmarks[8];
+
+                const dist = Math.hypot(thumb.x - index.x, thumb.y - index.y, thumb.z - index.z);
+                
+                const rawX = (1 - (thumb.x + index.x) / 2) * GAME_W;
+                const rawY = ((thumb.y + index.y) / 2) * GAME_H;
+
+                cursor.x += (rawX - cursor.x) * 0.35;
+                cursor.y += (rawY - cursor.y) * 0.35;
+
+                if (dist < config.pinchThreshold) {
+                    if (!isPinching && !grabLockOut) {
+                        isPinching = true;
+                        document.getElementById('grab-txt').innerText = "PINCHED";
+                        document.getElementById('grab-txt').style.color = "var(--accent-green)";
+                        checkGrabEngagement(cursor.x, cursor.y);
+                    } else if (isPinching) {
+                        handleBlockDrag();
+                    }
+                } else {
+                    if (isPinching || grabLockOut) {
+                        isPinching = false;
+                        grabLockOut = false; 
+                        document.getElementById('grab-txt').innerText = "OPEN";
+                        document.getElementById('grab-txt').style.color = "var(--text-muted)";
+                        grabbedBlock = null; 
+                    }
+                }
+            }
+        }
+
+        function checkGrabEngagement(sx, sy) {
+            for (let i = blocks.length - 1; i >= 0; i--) {
+                const b = blocks[i];
+                if (!b.isExtracted && b.isPointInside(sx, sy)) {
+                    grabbedBlock = b;
+                    break; 
+                }
+            }
+        }
+
+        function handleBlockDrag() {
+            if (!grabbedBlock) return;
+
+            if (grabbedBlock.isEven) {
+                grabbedBlock.isoX += (cursor.x - isoToScreen(grabbedBlock.isoX, grabbedBlock.isoY, grabbedBlock.isoZ).x) * 0.25;
+                if (Math.abs(grabbedBlock.isoX) > config.blockL * 0.75) {
+                    completeExtraction();
+                } else {
+                    // 드래그 중인 유도 위치에서도 무게중심 실시간 계산 연동 체크
+                    checkTowerBalance();
+                }
+            } else {
+                grabbedBlock.isoZ += (isoToScreen(grabbedBlock.isoX, grabbedBlock.isoY, grabbedBlock.isoZ).x - cursor.x) * 0.25;
+                if (Math.abs(grabbedBlock.isoZ) > config.blockL * 0.75) {
+                    completeExtraction();
+                } else {
+                    checkTowerBalance();
+                }
+            }
+        }
+
+        function completeExtraction() {
+            grabbedBlock.isExtracted = true;
+            grabbedBlock = null;
+            isPinching = false;
+            grabLockOut = true; 
+            
+            score++;
+            document.getElementById('score-txt').innerText = `${score}개`;
+            
+            applyTowerGravity();
+            checkTowerBalance(); // 정산 후 무게 중심 최종 파악
+
+            if (!isGameOver && !isCollapsing) {
+                currentPlayer = (currentPlayer === 1) ? 2 : 1;
+                updateTurnUI();
+            }
+        }
+
+        // 오직 지지층이 '완전히 비어있을 때'만 상부 레이어 정직하게 일제 수직 하강 낙하
+        function applyTowerGravity() {
+            let collapsed = true;
+            let safetyCounter = 0; 
+            
+            while (collapsed && safetyCounter < config.layerCount) {
+                collapsed = false;
+                safetyCounter++;
+                
+                for (let l = 1; l < config.layerCount; l++) {
+                    const belowLayerBlocks = blocks.filter(b => b.layer === l - 1 && !b.isExtracted);
+                    if (belowLayerBlocks.length === 0) {
+                        const hasActiveBlocksAbove = blocks.filter(b => b.layer >= l && !b.isExtracted).length > 0;
+                        
+                        if (hasActiveBlocksAbove) {
+                            blocks.filter(b => b.layer >= l).forEach(b => {
+                                b.layer--; b.isoY -= config.blockH;
+                            });
+                            collapsed = true;
+                            break; 
+                        }
+                    }
+                }
+            }
+        }
+
+        // [★신규 연산 탑재] 2.5D 정밀 층별 전체 무게 중심(Center of Mass) 붕괴 예측 알고리즘
+        function checkTowerBalance() {
+            if (isGameOver || isCollapsing) return;
+
+            for (let l = 0; l < config.layerCount; l++) {
+                const layerBlocks = blocks.filter(b => b.layer === l && !b.isExtracted);
+                const aboveBlocks = blocks.filter(b => b.layer > l && !b.isExtracted);
+
+                if (aboveBlocks.length === 0) continue;
+
+                // 1. 중간 지탱 층이 완전히 비어버린 띄워진 특이 상황 발생 시 즉각 붕괴 트리거
+                if (layerBlocks.length === 0) {
+                    triggerCollapseAnimation(l, 'center');
+                    return;
+                }
+
+                // 2. 해당 층 위에 얹어진 모든 블록의 3차원 무게 중심(CoM) 계산
+                let sumX = 0; let sumZ = 0;
+                aboveBlocks.forEach(b => {
+                    sumX += b.isoX;
+                    sumZ += b.isoZ;
+                });
+                const comX = sumX / aboveBlocks.length;
+                const comZ = sumZ / aboveBlocks.length;
+
+                // 3. 현재 층(l층)에 남아있는 기둥 조각들의 일체형 지지 영역 바운딩 박스 연산
+                let minX = Infinity, maxX = -Infinity;
+                let minZ = Infinity, maxZ = -Infinity;
+
+                layerBlocks.forEach(b => {
+                    const halfX = b.isEven ? 30 : 10; 
+                    const halfZ = b.isEven ? 10 : 30;
+
+                    if (b.isoX - halfX < minX) minX = b.isoX - halfX;
+                    if (b.isoX + halfX > maxX) maxX = b.isoX + halfX;
+                    if (b.isoZ - halfZ < minZ) minZ = b.isoZ - halfZ;
+                    if (b.isoZ + halfZ > maxZ) maxZ = b.isoZ + halfZ;
+                });
+
+                // 마진(안정 보정 계수)을 두어 1개 기둥이 완전히 외곽으로 쏠려 평형을 잃는 임계 영역 체크
+                const margin = 1.5;
+                if (comX < minX - margin || comX > maxX + margin || comZ < minZ - margin || comZ > maxZ + margin) {
+                    let dir = 'center';
+                    if (comX < minX - margin) dir = 'left';
+                    if (comX > maxX + margin) dir = 'right';
+                    triggerCollapseAnimation(l, dir);
+                    return;
+                }
+            }
+        }
+
+        // [★신규 연출 탑재] 파편이 사방으로 튀며 중력을 타고 낙하하는 dynamic 모션 이니셜라이저
+        function triggerCollapseAnimation(failedLayer, direction) {
+            isCollapsing = true;
+            collapseTimer = 0;
+            if (isPinching) { isPinching = false; grabbedBlock = null; }
+
+            blocks.forEach(b => {
+                if (!b.isExtracted) {
+                    // 기본 입체 난수 추진 속도 부여
+                    b.vx = (Math.random() - 0.5) * 3;
+                    b.vz = (Math.random() - 0.5) * 3;
+                    b.vy = (Math.random() * 2) + 1; // 살짝 위로 튀는 탄성 팝업
+                    b.screenRot = 0;
+                    b.vScreenRot = (Math.random() - 0.5) * 0.14; // 스크린 회전 가속
+
+                    // 결함 레이어 층 이상에 배치된 블록에 한해 무게 중심 이탈 오프셋 가중치 반영
+                    if (b.layer >= failedLayer) {
+                        if (direction === 'left') b.vx -= 4;
+                        if (direction === 'right') b.vx += 4;
+                        b.vy += (Math.random() * 2.5);
+                    }
+                }
+            });
+        }
+
+        function gameLoop() {
+            if (isGameOver) return;
+
+            // [★물리 파편 운동 가동 주기] 무너짐 발생 시 매 프레임 독립 좌표 덤블링 연산 진행
+            if (isCollapsing) {
+                collapseTimer++;
+                blocks.forEach(b => {
+                    if (!b.isExtracted) {
+                        b.isoX += b.vx;
+                        b.isoZ += b.vz;
+                        b.isoY += b.vy;
+                        b.vy -= 0.4; // 2.5D 간이 하향 중력 가속도 작용
+
+                        b.screenRot += b.vScreenRot;
+
+                        // 바닥(지면 y=0) 충돌 및 감속 바운싱 제어
+                        if (b.isoY < 0) {
+                            b.isoY = 0;
+                            b.vy = -b.vy * 0.3; // 지면 충격 흡수 바운스 반발
+                            b.vx *= 0.65;
+                            b.vz *= 0.65;
+                            b.vScreenRot *= 0.5;
+                        }
+                    }
+                });
+
+                // 약 1.3초 동안 리얼한 자유 낙하 타워 파괴 연출을 구경한 뒤 오버레이 판정창 오픈
+                if (collapseTimer > 80) {
+                    isCollapsing = false;
+                    triggerGameOver();
+                    return;
+                }
+            }
+
+            ctx.clearRect(0, 0, GAME_W, GAME_H);
+
+            // 아이소메트릭 가이드 바닥선 그리기
+            ctx.strokeStyle = "#e9ecef"; ctx.lineWidth = 1;
+            for(let i=-4; i<=4; i++) {
+                let p1 = isoToScreen(i*20, 0, -60); let p2 = isoToScreen(i*20, 0, 60);
+                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+                let p3 = isoToScreen(-60, 0, i*20); let p4 = isoToScreen(60, 0, i*20);
+                ctx.beginPath(); ctx.moveTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.stroke();
+            }
+
+            // 아래층 정렬 순으로 젠가 드로잉
+            ctx.strokeStyle = "rgba(0,0,0,0.12)"; ctx.lineWidth = 1;
+            blocks.forEach(b => b.draw());
+
+            // 붕괴 연출 중이 아닐 때만 핸드 포인터 조준선 표출
+            if (!isCollapsing) {
+                ctx.fillStyle = isPinching ? "var(--accent-green)" : (currentPlayer === 1 ? "var(--p1-color)" : "var(--p2-color)");
+                ctx.beginPath(); ctx.arc(cursor.x, cursor.y, 7, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(cursor.x, cursor.y, 9, 0, Math.PI * 2); ctx.stroke();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function triggerGameOver() {
+            isGameOver = true;
+            const loser = currentPlayer;
+            const winner = (loser === 1) ? 2 : 1;
+            const winnerColor = (winner === 1) ? "var(--p1-color)" : "var(--p2-color)";
+
+            document.getElementById('modal-title').innerText = "💥 TOWER COLLAPSED 💥";
+            document.querySelector('.instructions').innerHTML = `
+                <p style="text-align:center; font-weight:bold; color:var(--accent); font-size:14px; margin-bottom:8px;">
+                    Player ${loser}의 조작 실패로 균형이 전복되었습니다!
+                </p>
+                <p style="text-align:center; font-size:16px; font-weight:800; color:${winnerColor}; margin-bottom:12px;">
+                    🎉 Player ${winner} 매치 승리! 🎉
+                </p>
+                <p style="text-align:center; font-size:12px; color:var(--text-muted)">최종 성공 추출 보드: <b>${score}개</b></p>
+            `;
+            document.getElementById('btn-start').innerText = "새로운 배틀 시작하기";
+            document.getElementById('start-screen').style.display = 'flex';
+        }
+    </script>
+</body>
+</html>

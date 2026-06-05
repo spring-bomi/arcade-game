@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>현대면세점 VIP Lounge - Luxury Gold Bar Catch (Camera Edition)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+    <style>
+        /* 기본 스타일 유지 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            background: radial-gradient(circle at center, #111625 0%, #070911 100%);
+            color: #fff;
+            font-family: 'Noto Sans KR', sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* 게임 전체 컨테이너 */
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 480px;
+            height: 100vh;
+            max-height: 850px;
+            background: linear-gradient(180deg, rgba(19, 26, 43, 0.9) 0%, rgba(7, 9, 17, 0.98) 100%);
+            border: 2px solid #3a2f1d;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+            overflow: hidden;
+            /* 카메라 기반이므로 클릭 커서는 일반으로 */
+            cursor: default; 
+        }
+
+        /* 상단 헤더 UI 유지 */
+        .header {
+            text-align: center;
+            padding-top: 25px;
+            z-index: 10;
+            position: relative;
+        }
+        .header h1 {
+            font-size: 18px;
+            font-weight: 300;
+            letter-spacing: 4px;
+            color: #d4af37;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .header p {
+            font-size: 12px;
+            color: #8a94a6;
+            margin-top: 5px;
+            letter-spacing: 1px;
+        }
+
+        /* 상단 5개 골드 슬롯 유지 */
+        .slots-container {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 30px;
+            margin-top: 30px;
+            position: relative;
+            z-index: 5;
+        }
+        .slot {
+            width: 50px;
+            height: 20px;
+            background: linear-gradient(180deg, #2c2212 0%, #151008 100%);
+            border: 1.5px solid #d4af37;
+            border-bottom: none;
+            border-radius: 4px 4px 0 0;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8), 0 0 8px rgba(212, 175, 55, 0.3);
+            position: relative;
+        }
+        .slot::after {
+            content: '';
+            position: absolute;
+            bottom: -3px;
+            left: 10%;
+            width: 80%;
+            height: 3px;
+            background: #d4af37;
+            box-shadow: 0 0 8px #d4af37;
+        }
+
+        /* 하단 타이밍 캐치 존 (판정선) 유지 */
+        .catch-zone {
+            position: absolute;
+            bottom: 120px;
+            left: 25px;
+            right: 25px;
+            height: 75px;
+            border-top: 2px dashed rgba(212, 175, 55, 0.4);
+            border-bottom: 2px dashed rgba(212, 175, 55, 0.4);
+            background: linear-gradient(180deg, rgba(212, 175, 55, 0.03) 0%, rgba(212, 175, 55, 0.08) 50%, rgba(212, 175, 55, 0.03) 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2;
+            transition: all 0.2s;
+        }
+        .catch-zone.active {
+            background: linear-gradient(180deg, rgba(212, 175, 55, 0.1) 0%, rgba(212, 175, 55, 0.2) 50%, rgba(212, 175, 55, 0.1) 100%);
+            border-color: rgba(212, 175, 55, 0.9);
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
+        }
+        .catch-zone-label {
+            font-size: 11px;
+            color: rgba(212, 175, 55, 0.6);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            pointer-events: none;
+        }
+
+        /* 실시간 떨어지는 골드바 그래픽 유지 */
+        .gold-bar {
+            position: absolute;
+            width: 46px;
+            height: 90px;
+            background: linear-gradient(135deg, #bf953f 0%, #fcf6ba 25%, #b38728 50%, #fbf5b7 75%, #aa771c 100%);
+            border-radius: 4px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5), 0 0 20px rgba(252, 246, 186, 0.6);
+            z-index: 4;
+            transform: translateX(-50%);
+            pointer-events: none;
+        }
+        .gold-bar::before {
+            content: 'HYUNDAI';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-90deg);
+            font-size: 9px;
+            font-weight: 900;
+            color: rgba(8c, 62, 14, 0.7);
+            letter-spacing: 2px;
+        }
+
+        /* 하단 안내 가이드 문구 유지 및 카메라 안내 추가 */
+        .instruction-bottom {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            text-align: center;
+            color: #a4b0c2;
+            font-size: 13px;
+            letter-spacing: 1px;
+            animation: pulse 1.5s infinite;
+        }
+
+        /* 카메라 관련 UI 추가 */
+        #camera-status-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #e74c3c; /* 초기: 레드 (연결 안 됨) */
+            z-index: 100;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+            transition: background-color 0.3s;
+        }
+        #camera-status-indicator.ready {
+            background-color: #2ecc71; /* 그린 (연결됨, 손 인식 중) */
+        }
+
+        /* 카메라 영상 프리뷰 (VIP 라운지 배경과 조화롭게 은은하게 배치) */
+        #camera-preview-container {
+            position: absolute;
+            bottom: -50px; /* 화면 하단에 은은하게 위치 */
+            right: -50px;
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            overflow: hidden;
+            opacity: 0.3; /* 은은하게 처리 */
+            border: 2px solid rgba(212, 175, 55, 0.2);
+            z-index: 1;
+            pointer-events: none;
+            filter: grayscale(100%) contrast(120%); /* 세련되게 모노톤 처리 */
+        }
+        #webcam-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* 좌우 반전 */
+        }
+        #hands-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* 좌우 반전 */
+        }
+
+        /* 손 동작 안내 오버레이 */
+        #hand-instruction-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            z-index: 15;
+            color: #d4af37;
+            font-size: 14px;
+            letter-spacing: 1px;
+            background: rgba(7, 9, 17, 0.85);
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+        #hand-instruction-overlay.hidden {
+            opacity: 0;
+        }
+        #hand-icon {
+            font-size: 50px;
+            margin-bottom: 20px;
+            animation: handPulse 1.5s infinite;
+        }
+
+        /* 결과/인트로 오버레이 유지 */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 7, 12, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            padding: 30px;
+            text-align: center;
+            transition: opacity 0.3s ease;
+        }
+        .overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .popup-card {
+            background: linear-gradient(135deg, #192033 0%, #0d1220 100%);
+            border: 2px solid #d4af37;
+            padding: 40px 30px;
+            border-radius: 12px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.8);
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+            width: 100%;
+        }
+        .overlay:not(.hidden) .popup-card {
+            transform: scale(1);
+        }
+
+        .popup-title {
+            font-size: 22px;
+            color: #d4af37;
+            margin-bottom: 15px;
+            font-weight: 400;
+            letter-spacing: 1px;
+        }
+        .popup-desc {
+            font-size: 14px;
+            color: #a4b0c2;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        /* 경품/파티클 스타일 유지 */
+        .btn-premium {
+            background: linear-gradient(90deg, #cf9e3a 0%, #edd38c 50%, #cf9e3a 100%);
+            border: none;
+            color: #111625;
+            padding: 14px 40px;
+            font-size: 15px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(207, 158, 58, 0.4);
+            transition: all 0.2s;
+            letter-spacing: 1px;
+        }
+        .btn-premium:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(207, 158, 58, 0.6);
+        }
+        .prize-badge {
+            font-size: 26px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(212, 175, 55, 0.8);
+            margin: 20px 0;
+            background: rgba(212, 175, 55, 0.15);
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid rgba(212, 175, 55, 0.4);
+            animation: bounce 0.5s ease infinite alternate;
+        }
+        .particle {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: linear-gradient(#fcf6ba, #bf953f);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* 애니메이션 유지 및 추가 */
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; transform: scale(1.02); } 100% { opacity: 0.5; } }
+        @keyframes bounce { 0% { transform: translateY(0); } 100% { transform: translateY(-5px); } }
+        @keyframes handPulse { 
+            0% { transform: scale(1.0); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1.0); opacity: 0.8; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="header">
+        <h1>HYUNDAI DUTY FREE</h1>
+        <p>VIP LOUNGE SPEED CHALLENGE</p>
+    </div>
+
+    <div id="camera-status-indicator"></div>
+
+    <div id="camera-preview-container">
+        <video id="webcam-video" autoplay playsinline muted hidden></video>
+        <canvas id="hands-canvas"></canvas>
+    </div>
+
+    <div id="hand-instruction-overlay" class="hidden">
+        <div id="hand-icon">✋</div>
+        <div id="hand-text">카메라 앞에 손을 펴서 대기해 주세요.<br>(인식되면 그린 라이트가 켜집니다.)</div>
+    </div>
+
+    <div class="slots-container">
+        <div class="slot" id="slot-0"></div>
+        <div class="slot" id="slot-1"></div>
+        <div class="slot" id="slot-2"></div>
+        <div class="slot" id="slot-3"></div>
+        <div class="slot" id="slot-4"></div>
+    </div>
+
+    <div class="catch-zone" id="catch-zone">
+        <span class="catch-zone-label">CATCH ZONE</span>
+    </div>
+
+    <div class="instruction-bottom" id="bottom-instruction">
+        카메라 앞에 손을 펴고 대기하다가, 주먹을 꽉 쥐세요!
+    </div>
+
+    <div class="overlay" id="intro-overlay">
+        <div class="popup-card">
+            <h2 class="popup-title">럭셔리 골드바 캐치 (Camera)</h2>
+            <p class="popup-desc">
+                현대면세점 VIP 라운지에 오신 것을 환영합니다.<br><br>
+                <strong>웹캠 앞에 손을 펴서 대기하다가,</strong><br>
+                골드바가 캐치 존을 지날 때<br>
+                <strong>타이밍에 맞춰 주먹을 꽉 쥐어보세요!</strong><br><br>
+                대박 혜택이 여러분을 기다립니다.
+            </p>
+            <button class="btn-premium" onclick="startGame()">챌린지 시작 (카메라 권한 필요)</button>
+        </div>
+    </div>
+
+    <div class="overlay hidden" id="result-overlay">
+        <div class="popup-card">
+            <h2 class="popup-title" id="result-title">SUCCESS!</h2>
+            <div id="result-content">
+                </div>
+            <button class="btn-premium" onclick="resetGame()" style="margin-top: 15px;">다시 도전하기</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 기존 DOM 요소
+    const container = document.getElementById('game-container');
+    const catchZone = document.getElementById('catch-zone');
+    const introOverlay = document.getElementById('intro-overlay');
+    const resultOverlay = document.getElementById('result-overlay');
+    const resultTitle = document.getElementById('result-title');
+    const resultContent = document.getElementById('result-content');
+    const bottomInstruction = document.getElementById('bottom-instruction');
+
+    // 카메라 관련 DOM 요소
+    const videoElement = document.getElementById('webcam-video');
+    const canvasElement = document.getElementById('hands-canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const cameraStatusIndicator = document.getElementById('camera-status-indicator');
+    const handInstructionOverlay = document.getElementById('hand-instruction-overlay');
+    const handIcon = document.getElementById('hand-icon');
+    const handText = document.getElementById('hand-text');
+
+    // 게임 상태 변수 유지
+    let gameState = 'READY'; // READY, WAITING, DROPPING, END
+    let goldBar = null;
+    let currentY = 0;
+    let speed = 14; // 지연 시간을 고려하여 미세하게 늦춤 (몰입감 유지)
+    let dropAnimationId = null;
+    let slotPositions = [];
+
+    // 손 인식 관련 상태 변수 추가
+    let handsDetector = null;
+    let cameraInstance = null;
+    let handState = 'NONE'; // NONE, OPEN, FIST
+    let previousHandState = 'NONE';
+    let isHandDetected = false;
+    let lastProcessedTime = 0;
+    const processingInterval = 33; // 약 30fps 속도로 동작 분석 (배터리/성능 고려)
+
+    // 각 슬롯 위치 계산 함수 유지
+    function calculateSlotPositions() {
+        slotPositions = [];
+        const containerRect = container.getBoundingClientRect();
+        for (let i = 0; i < 5; i++) {
+            const slot = document.getElementById(`slot-${i}`);
+            const slotRect = slot.getBoundingClientRect();
+            const relativeX = (slotRect.left + slotRect.width / 2) - containerRect.left;
+            slotPositions.push(relativeX);
+        }
+    }
+
+    // MediaPipe Hands 초기화 및 카메라 연결 함수 추가
+    async function initializeHandsDetection() {
+        if (handsDetector) return; // 이미 초기화된 경우 건너뜀
+
+        // 1. Hands 모델 로드 및 구성
+        handsDetector = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }
+        });
+
+        // 세부 모델 복잡도/신뢰도 설정 (손가락 펴기/쥐기 정교화)
+        handsDetector.setOptions({
+            modelComplexity: 1, // 0: Fast, 1: Default, 2: Accurate
+            maxNumHands: 1, // 한 손만 인식
+            minDetectionConfidence: 0.7, // 손 검출 신뢰도
+            minTrackingConfidence: 0.7 // 손 추적 신뢰도
+        });
+
+        // 2. 결과 수신 콜백 함수 정의 (실시간 손 데이터 처리)
+        handsDetector.onResults(onHandsResults);
+
+        // 3. Camera 인스턴스 생성 및 연결 (비디오 스트림 로드)
+        cameraInstance = new Camera(videoElement, {
+            onFrame: async () => {
+                // 게임 진행 중에만 프레임 처리 (불필요한 연산 방지)
+                if (gameState === 'WAITING' || gameState === 'DROPPING') {
+                    await handsDetector.send({image: videoElement});
+                }
+            },
+            width: 640, // 적절한 해상도 설정 (성능 고려)
+            height: 480
+        });
+
+        // 4. 카메라 시작 요청
+        try {
+            await cameraInstance.start();
+            bottomInstruction.textContent = "카메라가 연결되었습니다. 손을 펴주세요.";
+        } catch (error) {
+            alert("카메라 권한이 필요합니다. 브라우저 설정을 확인하고 페이지를 새로고침해 주세요.");
+            cameraStatusIndicator.style.backgroundColor = '#e74c3c';
+        }
+    }
+
+    // 손 인식 결과 처리 (펴기/쥐기 판정 및 게임 연동) 함수 추가
+    function onHandsResults(results) {
+        // 성능 최적화를 위한 Interval 처리
+        const currentTime = performance.now();
+        if (currentTime - lastProcessedTime < processingInterval) return;
+        lastProcessedTime = currentTime;
+
+        // 1. 은은한 프리뷰 캔버스에 그리기 (Drawing Utils 활용)
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+        
+        // 인식된 손 랜드마크(마디) 시각화 (더 세련된 디자인)
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            isHandDetected = true;
+            cameraStatusIndicator.classList.add('ready');
+            
+            for (const landmarks of results.multiHandLandmarks) {
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(212, 175, 55, 0.4)', lineWidth: 1});
+                drawLandmarks(canvasCtx, landmarks, {color: 'rgba(212, 175, 55, 0.6)', lineWidth: 0.5, radius: 1});
+            }
+        } else {
+            isHandDetected = false;
+            cameraStatusIndicator.classList.remove('ready');
+            drawHandInstruction(true); // 손 인식 안 됨 안내 표시
+        }
+        canvasCtx.restore();
+
+        // 2. 손 동작 분석 및 게임 상태 연동
+        analyzeHandGesture(results);
+    }
+
+    // 손가락 펴기/쥐기 분석 및 캐치 트리거 함수 추가
+    function analyzeHandGesture(results) {
+        if (!isHandDetected || !results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+            handState = 'NONE';
+            return;
+        }
+
+        const landmarks = results.multiHandLandmarks[0];
+        previousHandState = handState; // 이전 상태 저장
+        
+        // 정교한 주먹 쥐기 분석 로직: 각 손가락 팁과 중간 마디의 y좌표 비교
+        const fingerTips = [8, 12, 16, 20]; // 검지, 중지, 약지, 소지 팁
+        const fingerPIPs = [6, 10, 14, 18]; // 중간 마디
+
+        let closedFingersCount = 0;
+        for (let i = 0; i < 4; i++) {
+            // 랜드마크 데이터 (y 좌표)는 화면 상단이 0, 하단이 1임
+            // 팁이 중간 마디보다 아래에 있으면 (y값이 더 크면) 굽혀진 상태
+            if (landmarks[fingerTips[i]].y > landmarks[fingerPIPs[i]].y) {
+                closedFingersCount++;
+            }
+        }
+        
+        // 4개 손가락이 모두 굽혀져 있으면 주먹으로 판정 (튜닝 가능)
+        if (closedFingersCount >= 3) {
+            handState = 'FIST';
+        } else {
+            handState = 'OPEN';
+        }
+
+        // 3. 상태 변화 감지 및 게임 이벤트 처리
+        if (gameState === 'DROPPING') {
+            // '펴기' 상태에서 '쥐기'로 변화한 '순간'을 캐치
+            if (previousHandState === 'OPEN' && handState === 'FIST') {
+                handleCatchCamera(); // 카메라 기반 캐치 처리
+            }
+        } else if (gameState === 'WAITING') {
+            // 대기 중에는 '펴기' 상태를 유도
+            if (handState === 'OPEN') {
+                drawHandInstruction(false); // 안내 오버레이 숨김
+                bottomInstruction.textContent = "손을 펴고 대기 중... 골드바를 캐치하세요!";
+            } else if (handState === 'FIST') {
+                // 주먹을 쥐고 있으면 펴달라는 안내 표시
+                drawHandInstruction(true, 'WAITING_OPEN');
+            }
+        }
+    }
+
+    // 손 인식 상태에 따른 오버레이 안내 함수 추가
+    function drawHandInstruction(show, type = 'NONE_DETECTED') {
+        if (show) {
+            handInstructionOverlay.classList.remove('hidden');
+            if (type === 'NONE_DETECTED') {
+                handIcon.textContent = '✋';
+                handText.innerHTML = '카메라 앞에<br>손을 펴서 대기해 주세요.';
+            } else if (type === 'WAITING_OPEN') {
+                handIcon.textContent = '✋';
+                handText.innerHTML = '주먹을 쥐지 마세요.<br>손을 펴고 대기하세요.';
+            }
+        } else {
+            handInstructionOverlay.classList.add('hidden');
+        }
+    }
+
+    // 게임 시작 함수 유지 및 카메라 초기화 추가
+    async function startGame() {
+        introOverlay.classList.add('hidden');
+        calculateSlotPositions();
+        
+        // 카메라 연결 및 손 인식 시작 (비동기 처리)
+        bottomInstruction.textContent = "카메라를 연결 중입니다...";
+        await initializeHandsDetection();
+        
+        prepareNextDrop();
+    }
+
+    // 다음 골드바 투하 대기 함수 유지
+    function prepareNextDrop() {
+        gameState = 'WAITING';
+        if (goldBar) { goldBar.remove(); goldBar = null; }
+
+        const randomDelay = Math.random() * 2000 + 1500;
+        setTimeout(() => {
+            if (gameState === 'WAITING') {
+                triggerDrop();
+            }
+        }, randomDelay);
+    }
+
+    // 골드바 낙하 개시 함수 유지
+    function triggerDrop() {
+        gameState = 'DROPPING';
+        const randomSlotIndex = Math.floor(Math.random() * 5);
+        const startX = slotPositions[randomSlotIndex];
+
+        goldBar = document.createElement('div');
+        goldBar.className = 'gold-bar';
+        goldBar.style.left = `${startX}px`;
+        goldBar.style.top = '75px';
+        container.appendChild(goldBar);
+
+        currentY = 75;
+        dropAnimationId = requestAnimationFrame(updateDrop);
+    }
+
+    // 낙하 애니메이션 함수 유지
+    function updateDrop() {
+        if (gameState !== 'DROPPING') return;
+
+        currentY += speed;
+        goldBar.style.top = `${currentY}px`;
+
+        const containerHeight = container.clientHeight;
+        if (currentY > containerHeight) {
+            gameOver(false, 'TOO_LATE');
+        } else {
+            dropAnimationId = requestAnimationFrame(updateDrop);
+        }
+    }
+
+    // 카메라 기반 캐치 판정 함수 추가 (지연 시간 최적화)
+    function handleCatchCamera() {
+        if (gameState !== 'DROPPING' || !goldBar) return;
+
+        // 판정 기준선 좌표 가져오기
+        const goldBarRect = goldBar.getBoundingClientRect();
+        const zoneRect = catchZone.getBoundingClientRect();
+
+        const barBottom = goldBarRect.bottom;
+        const barTop = goldBarRect.top;
+
+        // *** 중요: 지연 시간 최적화 판정 (Latency Compensation) ***
+        // 머신러닝 분석 및 카메라 지연 시간을 고려하여, 시각적인 캐치 존보다 판정 영역을 약간 넓게 설정
+        const tolerance = 25; // 위아래로 25px 추가 여유 (튜닝 가능)
+        const effectiveZoneTop = zoneRect.top - tolerance;
+        const effectiveZoneBottom = zoneRect.bottom + tolerance;
+
+        if (barBottom >= effectiveZoneTop && barTop <= effectiveZoneBottom) {
+            // 타이밍 적중 - 성공
+            createExplosion(goldBarRect.left + goldBarRect.width/2, goldBarRect.top + goldBarRect.height/2);
+            gameOver(true);
+        } else {
+            // 타이밍 빗나감 - 실패 (예외 처리)
+            // 지연 때문에 일찍 반응하는 경우가 많으므로 TOO_LATE보다 WRONG_TIMING으로 통합
+            gameOver(false, 'WRONG_TIMING'); 
+        }
+    }
+
+    // 파티클 효과 함수 유지
+    function createExplosion(x, y) {
+        catchZone.classList.add('active');
+        setTimeout(() => catchZone.classList.remove('active'), 200);
+
+        const containerRect = container.getBoundingClientRect();
+        const relativeX = x - containerRect.left;
+        const relativeY = y - containerRect.top;
+
+        for (let i = 0; i < 40; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.left = `${relativeX}px`;
+            p.style.top = `${relativeY}px`;
+            
+            const angle = Math.random() * Math.PI * 2;
+            const velocity = Math.random() * 12 + 5;
+            const vx = Math.cos(angle) * velocity;
+            const vy = Math.sin(angle) * velocity;
+
+            container.appendChild(p);
+
+            let pX = relativeX;
+            let pY = relativeY;
+            let opacity = 1;
+
+            function animateParticle() {
+                pX += vx;
+                pY += vy + 0.3;
+                opacity -= 0.02;
+                
+                p.style.left = `${pX}px`;
+                p.style.top = `${pY}px`;
+                p.style.opacity = opacity;
+
+                if (opacity > 0) {
+                    requestAnimationFrame(animateParticle);
+                } else {
+                    p.remove();
+                }
+            }
+            requestAnimationFrame(animateParticle);
+        }
+    }
+
+    // 게임 종료 및 결과 팝업 함수 유지 및 수정
+    function gameOver(isSuccess, reason) {
+        gameState = 'END';
+        cancelAnimationFrame(dropAnimationId);
+        if (goldBar) goldBar.remove();
+
+        // 손 인식 관련 UI 숨김
+        drawHandInstruction(false);
+        cameraStatusIndicator.classList.remove('ready');
+
+        resultOverlay.classList.remove('hidden');
+
+        if (isSuccess) {
+            resultTitle.innerHTML = `<span style="color:#d4af37;">★ WINNER ★</span>`;
+            resultContent.innerHTML = `
+                <p class="popup-desc" style="margin-bottom:10px;">놀라운 순발력입니다!<br>럭셔리 골드바 캐치에 성공하셨습니다.</p>
+                <div class="prize-badge">선불카드 5만 원권</div>
+                <p style="font-size:11px; color:#8a94a6;">* 마이페이지 > 쿠폰함에서 확인 가능합니다.</p>
+            `;
+        } else {
+            resultTitle.innerHTML = `<span style="color:#e74c3c;">FAILED</span>`;
+            let message = '아쉽게 골드바를 놓쳤습니다.<br>다시 도전해 보세요!';
+            if (reason === 'WRONG_TIMING') message = '타이밍이 조금 빗나갔습니다.<br>골드바가 캐치 존을 지날 때 주먹을 쥐세요.';
+            
+            resultContent.innerHTML = `
+                <p class="popup-desc">${message}</p>
+                <div style="font-size:40px; margin: 15px 0;">정진 ⏳</div>
+            `;
+        }
+    }
+
+    // 게임 다시 하기 세팅 유지
+    function resetGame() {
+        resultOverlay.classList.add('hidden');
+        // 카메라 인스턴스는 이미 시작되었으므로 게임 상태만 WAITING으로 변경
+        prepareNextDrop();
+    }
+
+    // 디바이스 리사이즈 대응 유지
+    window.addEventListener('resize', () => {
+        if(gameState !== 'READY') calculateSlotPositions();
+    });
+</script>
+
+</body>
+</html>

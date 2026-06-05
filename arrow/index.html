@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>손 제스처 방향 지시기</title>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@300;400&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: #1e1e2e;
+    --accent: #e8ff47;
+    --accent2: #47ffe8;
+    --text: #e0e0f0;
+    --muted: #555570;
+    --danger: #ff4766;
+    --glow: rgba(232, 255, 71, 0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', sans-serif;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0.4;
+  }
+
+  /* Grid lines */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(232,255,71,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(232,255,71,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Camera feed ── */
+  #videoContainer {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    width: 200px;
+    height: 150px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    z-index: 50;
+    background: var(--surface);
+  }
+
+  @media (max-width: 480px) {
+    #videoContainer {
+      width: 120px;
+      height: 90px;
+      top: 10px;
+      right: 10px;
+    }
+  }
+
+  #videoContainer video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    opacity: 0.85;
+  }
+
+  #videoContainer canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    /* CSS 반전 없음 — JS에서 x좌표를 미러링해서 비디오와 정렬 */
+  }
+
+  .cam-label {
+    position: absolute;
+    bottom: 4px;
+    left: 6px;
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 300;
+  }
+
+  /* ── Status bar ── */
+  #statusBar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--border);
+    z-index: 60;
+  }
+
+  #statusFill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.4s ease;
+  }
+
+  /* ── Main layout ── */
+  .main {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+  }
+
+  /* ── Title ── */
+  .title {
+    font-family: 'Black Han Sans', sans-serif;
+    font-size: clamp(1.1rem, 3vw, 1.6rem);
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  /* ── Arrow display ── */
+  .arrow-ring {
+    position: relative;
+    width: clamp(220px, 45vw, 360px);
+    height: clamp(220px, 45vw, 360px);
+  }
+
+  /* Outer decorative rings */
+  .ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    animation: pulse-ring 4s ease-in-out infinite;
+  }
+  .ring:nth-child(2) {
+    inset: -16px;
+    border-color: rgba(232,255,71,0.06);
+    animation-delay: 1s;
+  }
+  .ring:nth-child(3) {
+    inset: -32px;
+    border-color: rgba(232,255,71,0.03);
+    animation-delay: 2s;
+  }
+
+  @keyframes pulse-ring {
+    0%, 100% { opacity: 0.4; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.01); }
+  }
+
+  .arrow-bg {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* Glow behind arrow when active */
+  .arrow-bg::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--glow) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  .arrow-bg.glowing::after { opacity: 1; }
+
+  #arrowWrapper {
+    position: relative;
+    z-index: 2;
+    transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #arrowWrapper.spinning {
+    animation: spin-random 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  }
+
+  #arrowSvg {
+    width: clamp(80px, 18vw, 140px);
+    height: clamp(80px, 18vw, 140px);
+    filter: drop-shadow(0 0 20px var(--accent));
+    transition: filter 0.3s ease;
+  }
+
+  /* tick marks around the ring */
+  .ticks {
+    position: absolute;
+    inset: 0;
+  }
+
+  .tick {
+    position: absolute;
+    width: 2px;
+    height: 10px;
+    background: var(--border);
+    left: 50%;
+    top: 0;
+    transform-origin: 50% calc(clamp(110px, 22.5vw, 180px));
+    border-radius: 1px;
+  }
+  .tick.major {
+    height: 16px;
+    background: var(--accent);
+    opacity: 0.5;
+    width: 2px;
+  }
+
+  /* Direction label */
+  #dirLabel {
+    font-family: 'Black Han Sans', sans-serif;
+    font-size: clamp(1.4rem, 5vw, 2.4rem);
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    text-transform: uppercase;
+    min-height: 2.5rem;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  #dirLabel.visible { opacity: 1; }
+
+  /* ── Gesture hint ── */
+  .gesture-hint {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--surface);
+    font-size: clamp(0.72rem, 2vw, 0.82rem);
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  .gesture-icon {
+    font-size: 1.4rem;
+    animation: hand-slide 2s ease-in-out infinite;
+  }
+
+  @keyframes hand-slide {
+    0%, 100% { transform: translateX(-4px); }
+    50% { transform: translateX(4px); }
+  }
+
+  /* ── Detection indicator ── */
+  #detectionBar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--border);
+    z-index: 60;
+  }
+
+  #detectionFill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    transition: width 0.1s linear;
+  }
+
+  /* ── Swipe feedback flash ── */
+  #swipeFlash {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(circle at 60% 50%, rgba(232,255,71,0.08), transparent 70%);
+    pointer-events: none;
+    opacity: 0;
+    z-index: 5;
+  }
+
+  #swipeFlash.flash {
+    animation: do-flash 0.5s ease-out forwards;
+  }
+
+  @keyframes do-flash {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* ── Status text ── */
+  #statusText {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    z-index: 20;
+  }
+
+  #statusText .dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    margin-right: 6px;
+    vertical-align: middle;
+    transition: background 0.3s ease;
+  }
+
+  #statusText .dot.active { background: var(--accent); }
+
+  /* ── Swipe progress arc ── */
+  #swipeArc {
+    position: absolute;
+    inset: -8px;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  #swipeArcPath {
+    stroke: var(--accent);
+    stroke-width: 2;
+    fill: none;
+    stroke-dasharray: 0 1000;
+    transition: stroke-dasharray 0.1s linear;
+    filter: drop-shadow(0 0 4px var(--accent));
+  }
+</style>
+</head>
+<body>
+
+<div id="statusBar"><div id="statusFill"></div></div>
+<div id="swipeFlash"></div>
+
+<!-- Camera preview -->
+<div id="videoContainer">
+  <video id="inputVideo" autoplay muted playsinline></video>
+  <canvas id="outputCanvas"></canvas>
+  <span class="cam-label">LIVE</span>
+</div>
+
+<!-- Main UI -->
+<div class="main">
+  <div class="title">손 제스처 방향기</div>
+
+  <div class="arrow-ring" id="arrowRing">
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="ring"></div>
+
+    <!-- Tick marks -->
+    <div class="ticks" id="ticks"></div>
+
+    <!-- Swipe arc -->
+    <svg id="swipeArc" viewBox="0 0 300 300">
+      <circle cx="150" cy="150" r="146" stroke="var(--border)" stroke-width="1" fill="none"/>
+      <circle id="swipeArcPath" cx="150" cy="150" r="146"
+        stroke-dashoffset="230" stroke-linecap="round"
+        transform="rotate(-90 150 150)"/>
+    </svg>
+
+    <div class="arrow-bg" id="arrowBg">
+      <div id="arrowWrapper">
+        <svg id="arrowSvg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="arrowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#e8ff47;stop-opacity:0.7"/>
+              <stop offset="100%" style="stop-color:#e8ff47;stop-opacity:1"/>
+            </linearGradient>
+            <filter id="arrowGlow">
+              <feGaussianBlur stdDeviation="2" result="blur"/>
+              <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+            </filter>
+          </defs>
+          <polygon points="50,8 92,50 70,50 70,92 30,92 30,50 8,50"
+            fill="url(#arrowGrad)"
+            filter="url(#arrowGlow)"
+          />
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div id="dirLabel"></div>
+
+  <div class="gesture-hint">
+    <span class="gesture-icon">🤚</span>
+    <span>손 날을 오른쪽으로 스와이프 → 방향 랜덤 선택</span>
+  </div>
+</div>
+
+<div id="detectionBar"><div id="detectionFill"></div></div>
+
+<div id="statusText">
+  <span class="dot" id="statusDot"></span>
+  <span id="statusMsg">카메라 초기화 중...</span>
+</div>
+
+<script>
+// ── Tick marks ──────────────────────────────────────────────
+const ticksEl = document.getElementById('ticks');
+for (let i = 0; i < 36; i++) {
+  const t = document.createElement('div');
+  t.className = 'tick' + (i % 9 === 0 ? ' major' : '');
+  t.style.transform = `translateX(-50%) rotate(${i * 10}deg)`;
+  ticksEl.appendChild(t);
+}
+
+// ── Arrow rotation state ─────────────────────────────────────
+const DIRECTIONS = [
+  { label: '북 ↑',  angle: 0   },
+  { label: '북동 ↗', angle: 45  },
+  { label: '동 →',  angle: 90  },
+  { label: '남동 ↘', angle: 135 },
+  { label: '남 ↓',  angle: 180 },
+  { label: '남서 ↙', angle: 225 },
+  { label: '서 ←',  angle: 270 },
+  { label: '북서 ↖', angle: 315 },
+];
+
+let currentAngle = 0;
+let isSpinning = false;
+
+function spinArrow() {
+  if (isSpinning) return;
+  isSpinning = true;
+
+  const target = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)];
+
+  // Add multiple full rotations for effect
+  const extraSpins = (Math.floor(Math.random() * 3) + 2) * 360;
+  const totalAngle = currentAngle + extraSpins + ((target.angle - currentAngle % 360 + 360) % 360);
+
+  const wrapper = document.getElementById('arrowWrapper');
+  const arrowBg = document.getElementById('arrowBg');
+  const dirLabel = document.getElementById('dirLabel');
+
+  // Apply CSS transition for smooth spin
+  wrapper.style.transition = 'transform 0.9s cubic-bezier(0.25, 0.1, 0.25, 1)';
+  wrapper.style.transform = `rotate(${totalAngle}deg)`;
+
+  currentAngle = totalAngle;
+
+  // Glow effect
+  arrowBg.classList.add('glowing');
+
+  // Flash
+  const flash = document.getElementById('swipeFlash');
+  flash.classList.remove('flash');
+  void flash.offsetWidth;
+  flash.classList.add('flash');
+
+  // Label
+  setTimeout(() => {
+    dirLabel.textContent = target.label;
+    dirLabel.classList.add('visible');
+    isSpinning = false;
+  }, 700);
+
+  setTimeout(() => {
+    arrowBg.classList.remove('glowing');
+  }, 1200);
+}
+
+// ── Status helpers ───────────────────────────────────────────
+function setStatus(msg, active = false) {
+  document.getElementById('statusMsg').textContent = msg;
+  document.getElementById('statusDot').classList.toggle('active', active);
+}
+
+function setProgress(pct) {
+  document.getElementById('statusFill').style.width = pct + '%';
+}
+
+// ── Swipe arc progress ───────────────────────────────────────
+const arcCircumference = 2 * Math.PI * 146; // ~917
+
+function setSwipeProgress(ratio) {
+  const fill = Math.max(0, Math.min(1, ratio));
+  document.getElementById('swipeArcPath').style.strokeDasharray =
+    `${fill * arcCircumference} ${arcCircumference}`;
+  document.getElementById('detectionFill').style.width = (fill * 100) + '%';
+}
+
+// ── Hand swipe detection ─────────────────────────────────────
+const SWIPE_THRESHOLD_PX = 0.12; // fraction of frame width
+const SWIPE_SPEED_MIN = 0.006;   // per frame velocity threshold
+const COOLDOWN_MS = 800;
+
+let prevWristX = null;
+let swipeDeltaAccum = 0;
+let lastSwipeTime = 0;
+let handVisible = false;
+
+// For canvas overlay
+const canvas = document.getElementById('outputCanvas');
+const ctx = canvas.getContext('2d');
+
+function drawLandmarks(landmarks, w, h) {
+  ctx.clearRect(0, 0, w, h);
+  if (!landmarks) return;
+
+  // Draw connections (simplified)
+  const connections = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [5,9],[9,10],[10,11],[11,12],
+    [9,13],[13,14],[14,15],[15,16],
+    [13,17],[17,18],[18,19],[19,20],
+    [0,17]
+  ];
+
+  // 비디오는 CSS scaleX(-1) 미러링 → 캔버스도 x를 (1-x)로 뒤집어야 정확히 겹침
+  const mx = x => (1 - x) * w;
+  const my = y => y * h;
+
+  ctx.strokeStyle = 'rgba(232,255,71,0.6)';
+  ctx.lineWidth = 1.5;
+  connections.forEach(([a, b]) => {
+    const pa = landmarks[a], pb = landmarks[b];
+    ctx.beginPath();
+    ctx.moveTo(mx(pa.x), my(pa.y));
+    ctx.lineTo(mx(pb.x), my(pb.y));
+    ctx.stroke();
+  });
+
+  // Draw joints — 손목(0)은 청록색으로 강조
+  landmarks.forEach((lm, i) => {
+    ctx.beginPath();
+    ctx.arc(mx(lm.x), my(lm.y), i === 0 ? 4 : 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = i === 0 ? 'rgba(71,255,232,0.95)' : 'rgba(232,255,71,0.9)';
+    ctx.fill();
+  });
+}
+
+// Detect if hand is in "knife/blade" pose (fingers together, extended)
+function isKnifePose(landmarks) {
+  // Check fingers are extended and together (simplified heuristic)
+  // Wrist is [0], fingertips: 4,8,12,16,20
+  // We check that fingertips 8,12,16,20 are above MCP joints (extended)
+  const mcps = [5, 9, 13, 17];
+  const tips = [8, 12, 16, 20];
+
+  let extendedCount = 0;
+  for (let i = 0; i < tips.length; i++) {
+    if (landmarks[tips[i]].y < landmarks[mcps[i]].y) extendedCount++;
+  }
+
+  // Thumb: check if roughly tucked (thumb tip near palm)
+  const thumbExtended = landmarks[4].x < landmarks[3].x; // for right hand mirroring
+
+  return extendedCount >= 3;
+}
+
+// ── MediaPipe Hands setup ────────────────────────────────────
+let handsModel;
+
+async function initHands() {
+  setStatus('MediaPipe 로딩 중...');
+  setProgress(20);
+
+  handsModel = new Hands({
+    locateFile: file =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+
+  handsModel.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.5
+  });
+
+  handsModel.onResults(onResults);
+
+  setProgress(60);
+
+  const video = document.getElementById('inputVideo');
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+  } catch (err) {
+    setStatus('카메라 접근 실패: ' + err.message);
+    return;
+  }
+
+  setProgress(80);
+  setStatus('손 감지 준비 완료', true);
+  setProgress(100);
+  setTimeout(() => setProgress(0), 1000);
+
+  // Process frames
+  const camera = new Camera(video, {
+    onFrame: async () => {
+      canvas.width = video.videoWidth || 200;
+      canvas.height = video.videoHeight || 150;
+      await handsModel.send({ image: video });
+    },
+    width: 640,
+    height: 480
+  });
+  camera.start();
+}
+
+function onResults(results) {
+  const w = canvas.width;
+  const h = canvas.height;
+
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    handVisible = false;
+    prevWristX = null;
+    swipeDeltaAccum = 0;
+    setSwipeProgress(0);
+    ctx.clearRect(0, 0, w, h);
+    setStatus('손을 카메라에 보여주세요', true);
+    return;
+  }
+
+  const landmarks = results.multiHandLandmarks[0];
+  drawLandmarks(landmarks, w, h);
+
+  handVisible = true;
+  setStatus('손 감지됨 — 오른쪽으로 스와이프!', true);
+
+  const wristX = landmarks[0].x; // 0=left edge, 1=right edge (un-mirrored)
+
+  if (prevWristX !== null) {
+    const delta = prevWristX - wristX; // positive = moving toward camera-right (screen-left after mirror)
+    // Since video is mirrored, moving hand right in real world = wristX decreasing
+    const realDelta = prevWristX - wristX; // positive = hand moved to user's right
+
+    if (realDelta > SWIPE_SPEED_MIN) {
+      swipeDeltaAccum += realDelta;
+      setSwipeProgress(swipeDeltaAccum / SWIPE_THRESHOLD_PX);
+
+      const now = Date.now();
+      if (swipeDeltaAccum >= SWIPE_THRESHOLD_PX && (now - lastSwipeTime) > COOLDOWN_MS) {
+        lastSwipeTime = now;
+        swipeDeltaAccum = 0;
+        setSwipeProgress(0);
+        spinArrow();
+      }
+    } else if (realDelta < -0.005) {
+      // Moving the wrong way, reset
+      swipeDeltaAccum = Math.max(0, swipeDeltaAccum - 0.01);
+      setSwipeProgress(swipeDeltaAccum / SWIPE_THRESHOLD_PX);
+    }
+  }
+
+  prevWristX = wristX;
+}
+
+// ── Fallback: touch/mouse swipe ──────────────────────────────
+let touchStartX = null;
+
+document.addEventListener('touchstart', e => {
+  touchStartX = e.touches[0].clientX;
+}, { passive: true });
+
+document.addEventListener('touchend', e => {
+  if (touchStartX === null) return;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  touchStartX = null;
+  if (dx > 60) spinArrow();
+}, { passive: true });
+
+// Mouse fallback
+let mouseDown = false;
+let mouseStartX = null;
+document.addEventListener('mousedown', e => { mouseDown = true; mouseStartX = e.clientX; });
+document.addEventListener('mouseup', e => {
+  if (!mouseDown) return;
+  mouseDown = false;
+  const dx = e.clientX - mouseStartX;
+  if (dx > 60) spinArrow();
+});
+
+// ── Init ─────────────────────────────────────────────────────
+initHands().catch(err => {
+  setStatus('오류: ' + err.message);
+  console.error(err);
+});
+</script>
+</body>
+</html>

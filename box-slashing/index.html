@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>시크릿 박스 레이저 컷 - 모션 인식 개선 버전</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Noto+Sans+KR:wght@500;700&display=swap');
+
+        body {
+            margin: 0; padding: 0;
+            background-color: #000;
+            color: #fff;
+            font-family: 'Noto Sans KR', sans-serif;
+            overflow: hidden;
+            width: 100vw; height: 100vh;
+        }
+
+        /* 1. 카메라 배경 */
+        #input_video {
+            position: absolute;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            opacity: 0.5;
+        }
+
+        /* 2. 가상 에너지 검 & 입자 캔버스 */
+        #output_canvas {
+            position: absolute;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        /* 3. 게임 UI 레이어 */
+        #game-ui {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* 가이드 텍스트 */
+        #instruction {
+            position: absolute; top: 8%;
+            font-size: 32px; font-weight: 700; text-align: center;
+            text-shadow: 0 0 15px rgba(255,255,255,0.7);
+            background: rgba(0,0,0,0.6); padding: 20px; border-radius: 15px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+        }
+
+        /* 디버깅 텍스트 패널 (인식 확인용) */
+        #debug-panel {
+            position: absolute; top: 25%; left: 20px;
+            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px;
+            font-family: monospace; font-size: 16px; color: #00ff00;
+            z-index: 100; border: 1px solid #00ff00;
+            pointer-events: none;
+        }
+
+        /* 중앙 컷팅 라인 */
+        #cutting-guide {
+            position: absolute; top: 0; left: 50%;
+            transform: translateX(-50%);
+            width: 2px; height: 100%;
+            background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.5), transparent);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        /* 움직이는 보안선 (리본) */
+        #ribbon {
+            position: absolute; top: 0; left: 0;
+            width: 14px; height: 100%;
+            background: linear-gradient(to bottom, #ff0055, #ff4488, #ff0055);
+            box-shadow: 0 0 25px #ff0055, 0 0 10px #fff;
+            animation: moveRibbon 1.2s infinite alternate cubic-bezier(0.45, 0.05, 0.55, 0.95);
+        }
+
+        @keyframes moveRibbon {
+            0% { left: 10%; }
+            100% { left: 90%; }
+        }
+
+        /* 선물 상자 */
+        #box {
+            font-size: 160px;
+            margin-bottom: 50px;
+            animation: floatBox 3s infinite ease-in-out;
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            filter: drop-shadow(0 0 20px rgba(255, 191, 0, 0.5));
+        }
+
+        @keyframes floatBox {
+            0%, 100% { transform: translateY(0) rotate(-2deg); }
+            50% { transform: translateY(-25px) rotate(2deg); }
+        }
+
+        /* 실제 싹둑 자르는 레이저 이펙트 */
+        #laser-effect {
+            position: absolute; top: 0; left: 50%;
+            transform: translateX(-50%);
+            width: 25px; height: 100%;
+            background: linear-gradient(to right, transparent, #fff, transparent);
+            box-shadow: 0 0 30px #00ffff, 0 0 60px #fff;
+            opacity: 0;
+        }
+
+        .laser-fire {
+            animation: fireLaser 0.3s ease-out forwards;
+        }
+
+        @keyframes fireLaser {
+            0% { opacity: 0; transform: translateX(-50%) scaleX(0.1); }
+            10% { opacity: 1; transform: translateX(-50%) scaleX(1); }
+            100% { opacity: 0; transform: translateX(-50%) scaleX(0); }
+        }
+
+        /* 결과 메시지 */
+        #message {
+            position: absolute; bottom: 12%;
+            font-size: 60px; font-weight: bold;
+            font-family: 'Orbitron', sans-serif;
+            min-height: 70px;
+        }
+
+        .success { color: #00ffff; text-shadow: 0 0 25px #00ffff, 0 0 5px #fff; animation: textPop 0.5s; }
+        .fail { color: #ff4444; text-shadow: 0 0 15px #ff4444; animation: textShake 0.3s; }
+
+        @keyframes textPop { 0% {transform: scale(0.5);} 100% {transform: scale(1);} }
+        @keyframes textShake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-15px);} 75% {transform: translateX(15px);} }
+
+        /* 로딩 화면 */
+        #loading {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 100;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .spinner {
+            width: 50px; height: 50px; border: 5px solid #333; border-top-color: #00ffff;
+            border-radius: 50%; animation: spin 1s infinite linear;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+    </style>
+</head>
+<body>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <div style="font-size: 20px;">센서 및 모션 최적화 엔진 가동 중...</div>
+    </div>
+
+    <div id="debug-panel">
+        <div>[SYSTEM DEBUG]</div>
+        <div id="debug-hand">손 감지: Waiting...</div>
+        <div id="debug-speed">베기 속도: 0.00</div>
+    </div>
+
+    <video id="input_video" autoplay playsinline muted></video>
+    
+    <canvas id="output_canvas"></canvas>
+
+    <div id="game-ui">
+        <div id="instruction">손을 세워 '에너지 검'을 생성하세요.<br>리본이 중앙에 올 때 <strong style="color:#00ffff">위에서 아래로 베세요!</strong></div>
+        
+        <div id="cutting-guide"></div>
+        <div id="ribbon"></div>
+        <div id="box">🎁</div>
+        <div id="laser-effect"></div>
+
+        <div id="message"></div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const loadingScreen = document.getElementById('loading');
+
+        const ribbon = document.getElementById('ribbon');
+        const box = document.getElementById('box');
+        const laserEffect = document.getElementById('laser-effect');
+        const message = document.getElementById('message');
+        const guide = document.getElementById('cutting-guide');
+
+        // 디버깅 요소
+        const debugHand = document.getElementById('debug-hand');
+        const debugSpeed = document.getElementById('debug-speed');
+
+        let isGameActive = false;
+        
+        // --- 모션 인식 변수 개선 ---
+        let prevWristY = 0; 
+        let lastActionTime = 0;
+        const SLASH_THRESHOLD = 0.05; // 🌟 민감도 대폭 상향 (기존 0.12 -> 0.05)
+
+        // 입자 효과 변수
+        let particles = [];
+        const BLADE_COLOR = "cyan";
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y;
+                this.size = Math.random() * 6 + 1;
+                this.speedX = Math.random() * 4 - 2;
+                this.speedY = Math.random() * 4 - 2;
+                this.color = color;
+                this.life = 1.0;
+                this.decay = Math.random() * 0.06 + 0.04;
+            }
+            update() {
+                this.x += this.speedX; this.y += this.speedY;
+                this.life -= this.decay;
+                if (this.size > 0.1) this.size -= 0.1;
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // --- 1. MediaPipe Hands 설정 ---
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+        
+        hands.setOptions({
+            maxNumHands: 1, 
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6, // 🌟 프레임 드랍을 막기 위해 기준치 최적화
+            minTrackingConfidence: 0.6
+        });
+        
+        hands.onResults(onResults); 
+
+        // --- 2. 카메라 설정 ---
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+                if (loadingScreen.style.display !== 'none') {
+                    loadingScreen.style.display = 'none';
+                    isGameActive = true;
+                }
+            },
+            width: 1280,
+            height: 720
+        });
+        camera.start();
+
+        // --- 3. 핵심 루프 (모션 감지 및 그리기) ---
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (canvasElement.width !== videoElement.videoWidth) {
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+            }
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0]; 
+                debugHand.textContent = "손 감지: OK (연결됨)";
+                debugHand.style.color = "#00ff00";
+
+                const wrist = landmarks[0]; 
+                const indexTip = landmarks[8]; 
+                const middleTip = landmarks[12]; 
+
+                // 화면 좌표 계산
+                const wX = wrist.x * canvasElement.width;
+                const wY = wrist.y * canvasElement.height;
+                const fX = (indexTip.x + middleTip.x) / 2 * canvasElement.width;
+                const fY = (indexTip.y + middleTip.y) / 2 * canvasElement.height;
+
+                // 에너지 블레이드 렌더링
+                canvasCtx.shadowBlur = 30;
+                canvasCtx.shadowColor = BLADE_COLOR;
+                canvasCtx.strokeStyle = "#fff";
+                canvasCtx.lineWidth = 14;
+                canvasCtx.lineCap = "round";
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(wX, wY);
+                canvasCtx.lineTo(fX, fY);
+                canvasCtx.stroke();
+                canvasCtx.shadowBlur = 0;
+
+                // 검기 꼬리 입자 생성
+                if(Math.random() > 0.3) {
+                    particles.push(new Particle(fX, fY, BLADE_COLOR));
+                    particles.push(new Particle(wX, wY, "rgba(255,255,255,0.5)"));
+                }
+
+                // 🌟 [개선] 베기 동작 감지 로직 강화
+                if (isGameActive) {
+                    const wristY = wrist.y; // 0.0(상단) ~ 1.0(하단)
+
+                    if (prevWristY !== 0) {
+                        const deltaY = wristY - prevWristY; // 이전 프레임 대비 Y축 이동거리
+                        
+                        // 디버깅 패널에 실시간 이동 수치 표기
+                        if(deltaY > 0) {
+                            debugSpeed.textContent = `베기 속도: ${deltaY.toFixed(4)}`;
+                            if(deltaY > SLASH_THRESHOLD) {
+                                debugSpeed.style.color = "#00ffff";
+                            } else {
+                                debugSpeed.style.color = "#fff";
+                            }
+                        }
+
+                        const currentTime = new Date().getTime();
+
+                        // 획기적인 하향 조정 수치와 함께 연속 베기 제한 시간(쿨타임)을 0.6초로 단축
+                        if (deltaY > SLASH_THRESHOLD && (currentTime - lastActionTime > 600)) {
+                            triggerSlash();
+                            lastActionTime = currentTime; 
+                        }
+                    }
+                    prevWristY = wristY;
+                }
+
+            } else {
+                debugHand.textContent = "손 감지: 내밀어 주세요";
+                debugHand.style.color = "#ff4444";
+                prevWristY = 0;
+            }
+
+            // 파티클 드로우
+            for (let i = 0; i < particles.length; i++) {
+                particles[i].update();
+                particles[i].draw(canvasCtx);
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                    i--;
+                }
+            }
+
+            canvasCtx.restore();
+        }
+
+        // --- 4. 게임 판정 액션 ---
+        function triggerSlash() {
+            if (!isGameActive) return;
+
+            // 레이저 가르기 이펙트
+            laserEffect.classList.remove('laser-fire');
+            void laserEffect.offsetWidth; 
+            laserEffect.classList.add('laser-fire');
+
+            // 타이밍 확인
+            const ribbonRect = ribbon.getBoundingClientRect();
+            const guideRect = guide.getBoundingClientRect();
+
+            const ribbonCenter = ribbonRect.left + (ribbonRect.width / 2);
+            const guideCenter = guideRect.left + (guideRect.width / 2);
+
+            // 🌟 판정 오차 범위를 60px로 더 넉넉하게 수정 (사용자 체감상 성공률 향상)
+            const successMargin = 60; 
+            const diff = Math.abs(ribbonCenter - guideCenter);
+
+            if (diff <= successMargin) {
+                successAction();
+            } else {
+                failAction();
+            }
+        }
+
+        function successAction() {
+            isGameActive = false;
+            ribbon.style.animationPlayState = 'paused';
+            ribbon.style.opacity = '0.1';
+            
+            setTimeout(() => {
+                box.innerHTML = '🎉📦✨'; 
+                box.style.transform = 'scale(1.4)';
+                message.textContent = "LUCKY BOX 당첨!";
+                message.className = "success";
+                setTimeout(resetGame, 4000); // 4초 후 리셋
+            }, 100); 
+        }
+
+        function failAction() {
+            message.textContent = "MISS!";
+            message.className = "fail";
+            setTimeout(() => {
+                if(isGameActive) { 
+                    message.textContent = "";
+                    message.className = "";
+                }
+            }, 800);
+        }
+
+        function resetGame() {
+            if (box.innerHTML === '🎁') return;
+            box.innerHTML = '🎁';
+            box.style.transform = 'scale(1)';
+            ribbon.style.animationPlayState = 'running';
+            ribbon.style.opacity = '1';
+            message.textContent = "";
+            message.className = "";
+            isGameActive = true;
+        }
+    </script>
+</body>
+</html>

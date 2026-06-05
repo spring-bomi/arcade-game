@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>현대면세점 - 위치 판정형 모션 다트</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&family=Noto+Sans+KR:wght@400;700;900&display=swap');
+        body { font-family: 'Noto Sans KR', 'Poppins', sans-serif; background-color: #0b0f19; overflow: hidden; }
+        .runway-ring { transition: all 0.3s ease; }
+        
+        /* 비행 애니메이션 (과녁 중심점 기준 오프셋 이동) */
+        @keyframes flyToCenter {
+            0% { 
+                transform: translate(-50%, 130px) scale(1) rotate(0deg); 
+                opacity: 1; 
+            }
+            70% { 
+                transform: translate(calc(-50% + var(--target-x)), calc(-50% + var(--target-y))) scale(0.4) rotate(15deg); 
+                opacity: 0.9; 
+            }
+            100% { 
+                transform: translate(calc(-50% + var(--target-x)), calc(-50% + var(--target-y))) scale(0.22) rotate(0deg); 
+                opacity: 1; 
+            }
+        }
+        .dart-flying { animation: flyToCenter 1.2s cubic-bezier(0.18, 0.89, 0.32, 1.15) forwards; }
+        .runway-light { animation: blink 1.5s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+    </style>
+</head>
+<body class="flex justify-center items-center h-screen w-screen m-0 p-0">
+
+    <div id="kiosk-screen" class="relative w-[480px] h-[900px] bg-slate-900 rounded-[40px] shadow-2xl border-[10px] border-slate-800 overflow-hidden flex flex-col justify-between p-6 text-white select-none">
+        
+        <div class="text-center z-10 mt-2">
+            <div class="text-sm tracking-widest text-amber-400 font-bold mb-1">HYUNDAI DUTY FREE REAL-POSITION DART</div>
+            <h1 class="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-slate-200 to-amber-300 bg-clip-text text-transparent">
+                손 모션 활주로 다트
+            </h1>
+            <p class="text-xs text-slate-400 mt-2">꽂힌 위치에 따라 실시간으로 경품 등급이 결정됩니다!</p>
+        </div>
+
+        <div class="relative flex justify-center items-center my-auto h-[380px] w-full z-10">
+            <div class="absolute w-80 h-80 rounded-full border border-dashed border-sky-500/20 runway-light"></div>
+            
+            <div id="dartboard" class="relative w-80 h-80 rounded-full flex justify-center items-center shadow-2xl bg-slate-950/80 backdrop-blur-sm border-2 border-slate-700">
+                <div class="runway-ring absolute w-full h-full rounded-full border-4 border-emerald-500/40 flex justify-center items-start pt-2.5 text-[10px] font-bold text-emerald-400/80">PARIS ✈</div>
+                <div class="runway-ring absolute w-[75%] h-[75%] rounded-full border-4 border-cyan-500/50 bg-cyan-950/10 flex justify-center items-start pt-2.5 text-[10px] font-bold text-cyan-400/80">NEW YORK ✈</div>
+                <div class="runway-ring absolute w-[50%] h-[50%] rounded-full border-4 border-indigo-500/60 bg-indigo-950/20 flex justify-center items-start pt-2 text-[10px] font-bold text-indigo-300">SEOUL ✈</div>
+                <div class="runway-ring absolute w-[25%] h-[25%] rounded-full bg-gradient-to-br from-amber-400 to-amber-600 border-2 border-white flex flex-col justify-center items-center shadow-lg shadow-amber-500/50">
+                    <i class="fa-solid fa-hotel text-slate-900 text-xs mb-0.5"></i>
+                    <span class="text-[9px] font-black text-slate-900 text-center leading-tight">현대<br>면세점</span>
+                </div>
+            </div>
+
+            <div id="dart" class="absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-[130px] text-4xl text-amber-300 drop-shadow-[0_0_15px_rgba(251,191,36,0.7)] z-30 pointer-events-none transition-opacity duration-200">
+                <i class="fa-solid fa-paper-plane transform -rotate-45"></i>
+            </div>
+        </div>
+
+        <div class="z-10 w-full flex flex-col items-center gap-4">
+            <div id="hand-status-card" class="w-full flex flex-col items-center bg-slate-950 rounded-2xl border-2 border-slate-800 p-4 shadow-inner relative overflow-hidden">
+                <video id="webcam" autoplay playsinline class="hidden"></video>
+                <canvas id="motion-canvas" class="absolute inset-0 w-full h-full object-cover opacity-90"></canvas>
+                
+                <div class="absolute inset-x-8 bottom-4 top-1/2 border-2 border-dashed border-cyan-400/50 rounded-xl pointer-events-none">
+                    <div class="absolute inset-0 flex justify-center items-center">
+                        <i class="fa-solid fa-hand text-4xl text-cyan-500/20"></i>
+                    </div>
+                </div>
+
+                <div class="relative w-full z-10 flex flex-col items-center gap-2">
+                    <p id="status-text" class="text-emerald-400 text-xs font-bold animate-pulse text-center leading-tight">
+                        <i class="fa-solid fa-hands-reaching mr-2"></i>카메라 앞 중앙 하단에 손을 대고,<br>앞으로 시원하게 내지르세요!
+                    </p>
+                    <div class="w-2/3 bg-slate-800 rounded-full h-1.5 overflow-hidden border border-slate-700">
+                        <div id="motion-bar" class="bg-gradient-to-r from-cyan-400 to-amber-400 h-full rounded-full w-0 transition-all duration-75"></div>
+                    </div>
+                </div>
+            </div>
+
+            <button id="fallback-btn" class="w-full bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 font-bold text-xs py-3 rounded-xl transition active:scale-98">
+                <i class="fa-solid fa-mouse-pointer mr-2"></i> [테스트] 무작위 스로잉 시뮬레이션
+            </button>
+        </div>
+
+        <div id="result-modal" class="absolute inset-0 bg-slate-950/95 z-40 flex flex-col justify-center items-center p-8 hidden opacity-0 transition-opacity duration-300">
+            <div class="bg-slate-900 border border-amber-500/30 rounded-3xl p-7 text-center w-full max-w-sm shadow-2xl relative">
+                <div id="prize-badge" class="w-16 h-16 bg-amber-400 rounded-full flex justify-center items-center text-slate-950 text-2xl mx-auto mb-4 font-black shadow-lg shadow-amber-400/40"></div>
+                <div id="landing-zone-text" class="text-xs font-bold text-amber-400 tracking-widest mb-1.5">명중!</div>
+                <h2 id="prize-title" class="text-2xl font-black text-white mb-2.5 leading-tight">Point</h2>
+                <p id="prize-desc" class="text-xs text-slate-400 mb-4 leading-relaxed"></p>
+                <p id="coord-text" class="text-[10px] text-cyan-400 font-mono mb-4 bg-slate-950/60 py-1 rounded-md"></p>
+                
+                <div class="bg-white p-3 rounded-xl mb-6 flex flex-col items-center">
+                    <div class="w-full h-9 bg-[url('https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/UPC-A-barcode.svg/640px-UPC-A-barcode.svg.png')] bg-repeat-x bg-contain bg-center opacity-80"></div>
+                    <span class="text-[9px] text-slate-600 font-mono tracking-wildest mt-1.5">H-POINT-2026-PHYSICS</span>
+                </div>
+                <button id="restart-btn" class="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 text-xs font-bold py-3.5 rounded-xl transition">다시 도전하기</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('motion-canvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const motionBar = document.getElementById('motion-bar');
+        const statusText = document.getElementById('status-text');
+        const fallbackBtn = document.getElementById('fallback-btn');
+        const dart = document.getElementById('dart');
+        const resultModal = document.getElementById('result-modal');
+        const restartBtn = document.getElementById('restart-btn');
+        const coordText = document.getElementById('coord-text');
+
+        let prevFrameData = null;
+        let isGameActive = true;
+        
+        const roiRect = { x: 0.15, y: 0.5, w: 0.7, h: 0.45 };
+        let throwThreshold = 0.14; 
+        let prevMotionScore = 0;
+        let throwVelocityThreshold = 0.04; 
+
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 320, height: 240, facingMode: "user" } 
+                });
+                video.srcObject = stream;
+                video.addEventListener('loadedmetadata', () => {
+                    canvas.width = 160;
+                    canvas.height = 120;
+                    requestAnimationFrame(processVideo);
+                });
+            } catch (err) {
+                console.warn("카메라 비활성화 모드");
+                document.getElementById('hand-status-card').classList.add('hidden');
+            }
+        }
+
+        function processVideo() {
+            if (!video.videoWidth || !isGameActive) {
+                if(video.videoWidth) requestAnimationFrame(processVideo);
+                return;
+            }
+
+            ctx.save();
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.restore();
+
+            const currentFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const pixels = currentFrame.data;
+
+            let changedPixels = 0;
+            let sumX = 0;
+
+            const roiX = Math.floor(canvas.width * roiRect.x);
+            const roiY = Math.floor(canvas.height * roiRect.y);
+            const roiW = Math.floor(canvas.width * roiRect.w);
+            const roiH = Math.floor(canvas.height * roiRect.h);
+
+            ctx.fillStyle = 'rgba(34, 211, 238, 0.05)';
+            ctx.fillRect(roiX, roiY, roiW, roiH);
+
+            if (prevFrameData) {
+                for (let y = roiY; y < roiY + roiH; y++) {
+                    for (let x = roiX; x < roiX + roiW; x++) {
+                        const i = (y * canvas.width + x) * 4;
+                        const diff = Math.abs(pixels[i] - prevFrameData[i]) + 
+                                     Math.abs(pixels[i+1] - prevFrameData[i+1]) + 
+                                     Math.abs(pixels[i+2] - prevFrameData[i+2]);
+                        
+                        if (diff > 85) { 
+                            changedPixels++;
+                            sumX += x;
+                            pixels[i] = 251; pixels[i+1] = 191; pixels[i+2] = 36;
+                        }
+                    }
+                }
+            }
+
+            ctx.putImageData(currentFrame, 0, 0);
+            prevFrameData = pixels;
+
+            const motionScore = changedPixels / (roiW * roiH);
+            motionBar.style.width = `${Math.min(motionScore * 300, 100)}%`;
+
+            const motionVelocity = motionScore - prevMotionScore;
+
+            if (motionScore > throwThreshold && motionVelocity > throwVelocityThreshold) {
+                const avgX = changedPixels > 0 ? sumX / changedPixels : canvas.width / 2;
+                const roiCenterX = roiX + (roiW / 2);
+                const factorX = (avgX - roiCenterX) / (roiW / 2); // -1.0 ~ 1.0
+                
+                triggerThrow(factorX, motionVelocity);
+            }
+
+            prevMotionScore = motionScore;
+            requestAnimationFrame(processVideo);
+        }
+
+        // 🛠️ [핵심 수정] 물리 좌표계 선행 계산 시스템
+        function triggerThrow(factorX, velocity) {
+            isGameActive = false;
+            
+            statusText.innerText = "상태: 투척 성공!";
+            statusText.className = "text-amber-400 font-black animate-ping text-base";
+
+            // 1. 손의 가속도(Velocity)와 조준 방향(factorX)을 기반으로 순수 물리 좌표를 먼저 생성합니다.
+            // 밀어치는 파워가 최적치(0.07)에 가까울수록 중심(y=0)에 가까워집니다.
+            const targetAngle = (Math.PI * 1.5) + (factorX * Math.PI * 0.4) + (Math.random() * 0.15 - 0.075);
+            
+            const perfectVelocity = 0.07;
+            const velocityError = Math.abs(velocity - perfectVelocity) * 600; // 가속도 오차 환산
+            const directionError = Math.abs(factorX) * 130;                  // 방향 오차 환산
+            
+            // 최종 반지름 피치 결정 (오차가 적을수록 0px에 수렴하여 중앙 랜드마크 명중)
+            let radius = (directionError * 0.5) + (velocityError * 0.5) + (Math.random() * 20 - 10);
+            radius = Math.max(2, Math.min(156, radius)); // 과녁판 최대 반지름 160px 이내로 제한
+
+            // 삼각함수로 캔버스상의 정확한 픽셀 X, Y 좌표 확정
+            const targetX = Math.cos(targetAngle) * radius;
+            const targetY = Math.sin(targetAngle) * radius;
+
+            // 2. CSS 변수에 좌표 주입하여 비행기 발사
+            dart.style.setProperty('--target-x', `${targetX}px`);
+            dart.style.setProperty('--target-y', `${targetY}px`);
+            dart.classList.add('dart-flying');
+
+            // 3. [수정 완료] 종이비행기가 날아간 실제 최종 픽셀 거리(radius)로 등급 판정
+            let zone = 'paris';
+            if (radius <= 40) {
+                zone = 'hyundai'; // 0 ~ 40px 반경 (중앙 황금 원)
+            } else if (radius <= 80) {
+                zone = 'seoul';   // 41px ~ 80px 반경
+            } else if (radius <= 120) {
+                zone = 'newyork'; // 81px ~ 120px 반경
+            }                     // 121px ~ 160px 반경은 파리
+
+            setTimeout(() => {
+                showResult(zone, Math.round(targetX), Math.round(targetY), Math.round(radius));
+            }, 1200);
+        }
+
+        function showResult(zone, x, y, radius) {
+            const prizeBadge = document.getElementById('prize-badge');
+            const landingZoneText = document.getElementById('landing-zone-text');
+            const prizeTitle = document.getElementById('prize-title');
+            const prizeDesc = document.getElementById('prize-desc');
+
+            // 꽂힌 미세 픽셀 좌표 정보를 팝업에 출력하여 신뢰성 제공
+            coordText.innerText = `착륙 오프라인 좌표: X(${x}px), Y(${y}px) / 중심거리: ${radius}px`;
+
+            let prizeInfo = {
+                badge: '<i class="fa-solid fa-crown"></i>',
+                zoneName: '현대면세점 CORES ZONE (정중앙 명중!)',
+                title: '오프라인 100,000 h.Point',
+                desc: '축하합니다! 무역센터점/동대문점에서 즉시 사용 가능한 최고액 10만 포인트와 스페셜 할인 리워드가 지급됩니다.'
+            };
+
+            if (zone === 'seoul') {
+                prizeInfo = { badge: '<i class="fa-solid fa-plane-arrival"></i>', zoneName: '서울 활주로 ZONE (안착)', title: '오프라인 50,000 h.Point', desc: '안정적인 궤도로 안착했습니다! 현대면세점 오프라인 매장 전용 5만 포인트 가우징이 완료되었습니다.' };
+            } else if (zone === 'newyork') {
+                prizeInfo = { badge: '<i class="fa-solid fa-plane"></i>', zoneName: '뉴욕 활주로 ZONE (안착)', title: '오프라인 10,000 h.Point', desc: '뉴욕 터미널 구역에 무사히 터치다운 했습니다. 매장에서 즉시 쓸 수 있는 1만 포인트를 적립합니다.' };
+            } else if (zone === 'paris') {
+                prizeInfo = { badge: '<i class="fa-solid fa-ticket"></i>', zoneName: '파리 활주로 ZONE (외곽)', title: '면세점 10% 일반 할인권', desc: '조준선이 외곽 방향으로 약간 밀려났습니다! 오프라인 투어용 10% 일반 패스 쿠폰이 발급됩니다.' };
+            }
+
+            prizeBadge.innerHTML = prizeInfo.badge;
+            landingZoneText.innerText = prizeInfo.zoneName;
+            prizeTitle.innerText = prizeInfo.title;
+            prizeDesc.innerText = prizeInfo.desc;
+
+            resultModal.classList.remove('hidden');
+            setTimeout(() => resultModal.classList.add('opacity-100'), 50);
+        }
+
+        restartBtn.addEventListener('click', () => {
+            resultModal.classList.remove('opacity-100');
+            setTimeout(() => {
+                resultModal.classList.add('hidden');
+                dart.classList.remove('dart-flying');
+                dart.style.removeProperty('--target-x');
+                dart.style.removeProperty('--target-y');
+                
+                prevFrameData = null;
+                prevMotionScore = 0;
+                
+                statusText.innerText = "카메라 앞 중앙 하단에 손을 대고, 앞으로 시원하게 내지르세요!";
+                statusText.className = "text-emerald-400 text-xs font-bold animate-pulse text-center leading-tight";
+                motionBar.style.width = "0%";
+                
+                isGameActive = true;
+                requestAnimationFrame(processVideo);
+            }, 300);
+        });
+
+        fallbackBtn.addEventListener('click', () => {
+            if (!isGameActive) return;
+            // 시뮬레이터 마우스 클릭 시 완전 랜덤 좌표 트리거 생성하도록 수정
+            const mockFactorX = (Math.random() * 1.6) - 0.8;
+            const mockVelocity = 0.02 + (Math.random() * 0.1);
+            triggerThrow(mockFactorX, mockVelocity);
+        });
+
+        initCamera();
+    </script>
+</body>
+</html>
