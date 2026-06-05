@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRUMP CARD MATCH - KIOSK ARCADE</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        /* 카지노 테이블 감성의 고급스러운 딥 그린 배경 */
+        body {
+            background-color: #020617;
+            color: #ffffff;
+            font-family: 'Noto Sans KR', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 9:16 비율의 세로형 키오스크 컨테이너 */
+        #game-container {
+            width: 540px;
+            height: 960px;
+            position: relative;
+            background: radial-gradient(circle at center, #14532d 0%, #022c22 100%);
+            border: 6px solid #b45309; /* 우드 프레임 느낌 */
+            border-radius: 24px;
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.8), 0 0 50px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+            overflow: hidden;
+        }
+
+        /* 공통 헤더 */
+        header {
+            width: 100%;
+            text-align: center;
+            z-index: 10;
+            margin-bottom: 20px;
+        }
+        .game-title {
+            font-size: 32px;
+            color: #fcd34d;
+            letter-spacing: 2px;
+            text-shadow: 0 3px 6px rgba(0,0,0,0.5);
+        }
+
+        /* 뷰 관리 구조 (앱 스타일 뷰 전환) */
+        .app-view {
+            display: none;
+            width: 100%;
+            flex-direction: column;
+            align-items: center;
+            z-index: 10;
+        }
+        .app-view.active {
+            display: flex;
+        }
+
+        /* [수정사항 2] 인트로 / 룰 설명 화면 스타일 */
+        #intro-view {
+            height: 100%;
+            justify-content: center;
+            padding-top: 40px;
+        }
+        .rule-container {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid #b45309;
+            border-radius: 16px;
+            padding: 25px;
+            margin: 40px 0;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+        .rule-title {
+            font-size: 22px;
+            color: #fcd34d;
+            text-align: center;
+            margin-bottom: 20px;
+            font-weight: bold;
+            border-bottom: 1px solid #b45309;
+            padding-bottom: 10px;
+        }
+        .rule-list {
+            list-style: none;
+        }
+        .rule-item {
+            font-size: 17px;
+            line-height: 1.6;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: flex-start;
+        }
+        .rule-item span {
+            color: #fcd34d;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        /* 인게임 HUD 영역 */
+        .stage-indicator {
+            font-size: 24px;
+            color: #fcd34d;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .timer-container {
+            width: 90%;
+            height: 16px;
+            background: #111827;
+            border: 2px solid #fcd34d;
+            border-radius: 10px;
+            margin: 5px auto 15px;
+            overflow: hidden;
+        }
+        .timer-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #f59e0b, #fcd34d);
+            transition: width 0.1s linear;
+        }
+        .stats-row {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-bottom: 20px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #f3f4f6;
+        }
+        .stat-box span { color: #fcd34d; }
+
+        /* [수정사항 1] 가변형 짝맞추기 카드 그리드 레이아웃 */
+        .card-grid {
+            display: grid;
+            gap: 12px;
+            width: 100%;
+            height: 500px;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+
+        /* 카드 컴포넌트 구조 */
+        .card-wrapper {
+            perspective: 1000px;
+            width: 100%;
+            height: 100%;
+        }
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.2);
+            transform-style: preserve-3d;
+            border-radius: 12px;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+        }
+        .card-wrapper.hovered .card-inner {
+            transform: scale(1.05) translateY(-5px);
+            box-shadow: 0 0 25px #fcd34d;
+        }
+        .card-wrapper.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+        
+        .card-front, .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            border-radius: 12px;
+            border: 3px solid #ffffff;
+        }
+        .card-back {
+            background-color: #b91c1c;
+            background-image: radial-gradient(#991b1b 20%, transparent 20%), radial-gradient(#991b1b 20%, transparent 20%);
+            background-size: 12px 12px;
+            background-position: 0 0, 6px 6px;
+            border: 3px solid #fcd34d;
+        }
+        .card-front {
+            background: #ffffff;
+            color: #000000;
+            transform: rotateY(180deg);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 32px;
+            font-weight: 900;
+        }
+        .card-front.red-suit { color: #dc2626; }
+        .card-front.black-suit { color: #111827; }
+        .card-front .mini-suit {
+            position: absolute;
+            font-size: 14px;
+            top: 4px; left: 6px;
+        }
+
+        /* 글로벌 버튼 가이드 스타일 */
+        .btn {
+            background: linear-gradient(135deg, #b45309 0%, #d97706 100%);
+            color: #ffffff;
+            border: 2px solid #fcd34d;
+            padding: 16px 45px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 35px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .btn.hovered {
+            transform: scale(1.06);
+            background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+        }
+
+        /* 하단 카메라 피드 존 */
+        .bottom-area {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            margin-top: auto;
+        }
+        .camera-box {
+            width: 120px; height: 90px;
+            border: 2px solid #fcd34d; border-radius: 8px;
+            overflow: hidden; background: #000; transform: scaleX(-1);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #webcam { width: 100%; height: 100%; object-fit: cover; }
+
+        /* 핸드트래킹 타겟 조준 가이드 포인터 */
+        #pointer-hint {
+            position: absolute; width: 32px; height: 32px;
+            border: 3px solid #fcd34d; border-radius: 50%;
+            pointer-events: none; transform: translate(-50%, -50%);
+            z-index: 100; box-shadow: 0 0 15px #fcd34d;
+        }
+        #pointer-hint.pinching {
+            background-color: rgba(252, 211, 77, 0.7);
+            transform: translate(-50%, -50%) scale(0.7);
+        }
+
+        #effect-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 5; display: none;
+        }
+
+        /* [수정사항 1] 단계별 테마가 동적으로 변형 적용되는 모달 오버레이 */
+        .modal-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 100;
+            display: none; justify-content: center; align-items: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.4s;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; display: flex; }
+        
+        .result-box {
+            width: 85%; border-radius: 24px; padding: 40px 20px; text-align: center;
+            box-shadow: 0 0 40px rgba(0,0,0,0.6);
+            transition: all 0.3s;
+        }
+        
+        /* 단계별 커스텀 결과창 테마 인젝션 스펙 */
+        .result-box.stage1-theme { background: #1e3a8a; border: 4px solid #60a5fa; } /* 1단계: 블루 브론즈 */
+        .result-box.stage2-theme { background: #312e81; border: 4px solid #c0cbdc; } /* 2단계: 퍼플 실버 */
+        .result-box.stage3-theme { background: #581c87; border: 4px solid #fcd34d; } /* 3단계: 로열 골드 */
+        .result-box.fail-theme { background: #7f1d1d; border: 4px solid #ef4444; }   /* 패배: 크림슨 레드 */
+
+        .result-status { font-size: 30px; color: #ffffff; margin-bottom: 5px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+        .result-subtitle { font-size: 18px; color: #fcd34d; font-weight: bold; margin-bottom: 15px; }
+        .rank-badge {
+            font-size: 64px; color: #ffffff; font-weight: 900;
+            text-shadow: 0 0 20px rgba(255,255,255,0.4); margin: 10px 0;
+        }
+        .score-info { font-size: 18px; color: #e5e7eb; margin-bottom: 25px; }
+        
+        /* 결과 팝업 내 버튼 그룹 배열 레이아웃 */
+        .modal-btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            align-items: center;
+            width: 100%;
+        }
+        .modal-btn-group .btn {
+            width: 80%;
+            padding: 12px 25px;
+            font-size: 18px;
+        }
+        .btn-home { background: #4b5563; border-color: #9ca3af; }
+        .btn-home.hovered { background: #6b7280; }
+        .btn-next { background: linear-gradient(135deg, #059669 0%, #10b981 100%); border-color: #34d399; }
+        .btn-next.hovered { background: linear-gradient(135deg, #10b981 0%, #34d399 100%); }
+
+        #combo-toast {
+            position: absolute; top: 160px; font-size: 40px; font-weight: 900;
+            color: #f43f5e; text-shadow: 0 0 10px #000; z-index: 20;
+            transform: scale(0); transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.5);
+        }
+        #combo-toast.active { transform: scale(1.3); }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <header>
+            <div class="game-title">♠ CASINO ARCADE ♣</div>
+        </header>
+
+        <div id="combo-toast">2 COMBO!</div>
+
+        <div id="intro-view" class="app-view active">
+            <div class="rule-container">
+                <div class="rule-title">GAME RULES</div>
+                <ul class="rule-list">
+                    <li class="rule-item"><span>1.</span> 3단계 스테이지 난이도 매칭 챌린지입니다.</li>
+                    <li class="rule-item"><span>2.</span> 시작 시 2.5초간 카드가 노출되니 위치를 외우세요!</li>
+                    <li class="rule-item"><span>3.</span> 전면 카메라에 손을 올리면 포인터가 추적됩니다.</li>
+                    <li class="rule-item"><span>4.</span> 엄지와 검지를 모으는 <b>[Pinch]</b> 제스처로 콕 집으세요.</li>
+                    <li class="rule-item"><span>5.</span> 시간 내에 모든 짝을 맞추면 스테이지를 통과합니다.</li>
+                </ul>
+            </div>
+            <button class="btn" id="start-btn" onclick="enterStage(1)">CHALLENGE START</button>
+        </div>
+
+        <div id="game-view" class="app-view">
+            <div class="stage-indicator" id="stage-indicator">STAGE 1</div>
+            <div class="timer-container"><div class="timer-bar" id="timer-bar"></div></div>
+            <div class="stats-row">
+                <div class="stat-box">SCORE: <span id="score-text">0</span></div>
+                <div class="stat-box">COMBO: <span id="combo-text">0</span></div>
+            </div>
+
+            <div class="card-grid" id="card-grid"></div>
+        </div>
+
+        <div class="bottom-area">
+            <div class="camera-box"><video id="webcam" autoplay playsinline></video></div>
+        </div>
+
+        <canvas id="effect-canvas"></canvas>
+
+        <div class="modal-overlay" id="modal">
+            <div class="result-box" id="result-box">
+                <div class="result-status" id="result-status">STAGE CLEAR!</div>
+                <div class="result-subtitle" id="result-subtitle">STAGE 1 통과 완료</div>
+                <div class="rank-badge" id="rank-badge">🥉</div>
+                <div class="score-info" id="score-info">최종 점수: 0점</div>
+                
+                <div class="modal-btn-group">
+                    <button class="btn btn-next" id="next-stage-btn" onclick="nextStageAction()">NEXT STAGE</button>
+                    <button class="btn" id="retry-btn" onclick="retryStageAction()">다시하기</button>
+                    <button class="btn btn-home" id="home-btn" onclick="backToHomeAction()">홈으로</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="pointer-hint"></div>
+    </div>
+
+    <script>
+        const introView = document.getElementById('intro-view');
+        const gameView = document.getElementById('game-view');
+        const cardGrid = document.getElementById('card-grid');
+        const timerBar = document.getElementById('timer-bar');
+        const scoreText = document.getElementById('score-text');
+        const comboText = document.getElementById('combo-text');
+        const comboToast = document.getElementById('combo-toast');
+        const modal = document.getElementById('modal');
+        const resultBox = document.getElementById('result-box');
+        const pointerHint = document.getElementById('pointer-hint');
+        const videoElement = document.getElementById('webcam');
+        const canvas = document.getElementById('effect-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 전체 트럼프 카드 풀 데이터베이스
+        const allBaseCards = [
+            { name: 'A♠', suit: '♠', style: 'black-suit' },
+            { name: 'K♥', suit: '♥', style: 'red-suit' },
+            { name: 'Q♦', suit: '♦', style: 'red-suit' },
+            { name: 'J♣', suit: '♣', style: 'black-suit' },
+            { name: '10♠', suit: '♠', style: 'black-suit' },
+            { name: '9♥', suit: '♥', style: 'red-suit' },
+            { name: '8♦', suit: '♦', style: 'red-suit' },
+            { name: '7♣', suit: '♣', style: 'black-suit' }
+        ];
+        
+        // 스테이지 난이도 테이블 설계 매트릭스
+        const stageSpecs = {
+            1: { pairs: 3, cols: 3, rows: 2, speed: 0.15, label: "STAGE 1 (EASY)" },   // 6장 매칭
+            2: { pairs: 6, cols: 3, rows: 4, speed: 0.25, label: "STAGE 2 (NORMAL)" }, // 12장 매칭
+            3: { pairs: 8, cols: 4, rows: 4, speed: 0.35, label: "STAGE 3 (HARD)" }    // 16장 매칭
+        };
+
+        let currentStage = 1;
+        let cardList = [];
+        let flippedCards = []; 
+        let matchedPairs = 0;
+        let score = 0;
+        let combo = 0;
+        let timeLeft = 100; 
+        let gameTimer = null;
+        
+        let isGameState = false; 
+        let isLock = false;      
+        let isPinching = false;
+
+        // 동적 그리드 및 카드 엔티티 덱 생성기
+        function createDeck(stageNum) {
+            cardGrid.innerHTML = '';
+            flippedCards = [];
+            matchedPairs = 0;
+            
+            const spec = stageSpecs[stageNum];
+            cardGrid.style.gridTemplateColumns = `repeat(${spec.cols}, 1fr)`;
+            cardGrid.style.gridTemplateRows = `repeat(${spec.rows}, 1fr)`;
+
+            // 필요한 짝만큼 슬라이싱 후 복제 처리
+            const selectedPairs = allBaseCards.slice(0, spec.pairs);
+            cardList = [...selectedPairs, ...selectedPairs]
+                .map((card, index) => ({ ...card, uniqueId: index }))
+                .sort(() => Math.random() - 0.5);
+
+            cardList.forEach(card => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'card-wrapper';
+                wrapper.setAttribute('data-id', card.uniqueId);
+                wrapper.setAttribute('data-name', card.name);
+
+                wrapper.innerHTML = `
+                    <div class="card-inner">
+                        <div class="card-back"></div>
+                        <div class="card-front ${card.style}">
+                            <div class="mini-suit">${card.name}</div>
+                            <div>${card.suit}</div>
+                        </div>
+                    </div>
+                `;
+                cardGrid.appendChild(wrapper);
+            });
+        }
+
+        // 특정 스테이지 환경 진입 연산 함수
+        async function enterStage(stageNum) {
+            currentStage = stageNum;
+            introView.classList.remove('active');
+            gameView.classList.add('active');
+            modal.classList.remove('active');
+            
+            document.getElementById('stage-indicator').innerText = stageSpecs[stageNum].label;
+            createDeck(stageNum);
+            
+            isLock = true;
+            if(stageNum === 1) score = 0; // 1단계 신규 진입 시 스코어 초기화
+            combo = 0; 
+            timeLeft = 100;
+            scoreText.innerText = score;
+            comboText.innerText = combo;
+            timerBar.style.width = '100%';
+
+            // 암기 딜레이 단계 연출개시
+            await sleep(300);
+            document.querySelectorAll('.card-wrapper').forEach(c => c.classList.add('flipped'));
+            
+            await sleep(2500);
+            document.querySelectorAll('.card-wrapper').forEach(c => c.classList.remove('flipped'));
+            
+            await sleep(400);
+            isLock = false;
+            isGameState = true;
+
+            // 실시간 타임 디크리먼트 타이머 실행
+            clearInterval(gameTimer);
+            gameTimer = setInterval(() => {
+                if (!isGameState) return;
+                timeLeft -= stageSpecs[currentStage].speed;
+                timerBar.style.width = `${timeLeft}%`;
+
+                if (timeLeft <= 0) {
+                    endGame(false); // 타임오버 패배
+                }
+            }, 100);
+        }
+
+        function selectCard(cardElement) {
+            if (!isGameState || isLock || cardElement.classList.contains('flipped')) return;
+
+            cardElement.classList.add('flipped');
+            flippedCards.push(cardElement);
+
+            if (flippedCards.length === 2) {
+                checkMatch();
+            }
+        }
+
+        function checkMatch() {
+            isLock = true; 
+            const [card1, card2] = flippedCards;
+            const name1 = card1.getAttribute('data-name');
+            const name2 = card2.getAttribute('data-name');
+
+            if (name1 === name2) {
+                matchedPairs++;
+                combo++;
+                
+                const comboBonus = combo * 50;
+                score += (100 + comboBonus);
+                timeLeft = Math.min(100, timeLeft + 10); // 정답 보너스 시간 추가
+
+                scoreText.innerText = score;
+                comboText.innerText = combo;
+
+                if (combo >= 2) {
+                    showComboToast(`${combo} COMBO!`);
+                }
+
+                triggerGoldEffect(card2);
+                flippedCards = [];
+                isLock = false;
+
+                // 해당 스테이지 승리 조건 검증
+                if (matchedPairs === stageSpecs[currentStage].pairs) {
+                    endGame(true);
+                }
+            } else {
+                combo = 0;
+                comboText.innerText = combo;
+                timeLeft = Math.max(0, timeLeft - 8); // 오답 패널티 시간 감점
+
+                setTimeout(() => {
+                    card1.classList.remove('flipped');
+                    card2.classList.remove('flipped');
+                    flippedCards = [];
+                    isLock = false;
+                }, 900);
+            }
+        }
+
+        function showComboToast(msg) {
+            comboToast.innerText = msg;
+            comboToast.classList.add('active');
+            setTimeout(() => comboToast.classList.remove('active'), 600);
+        }
+
+        // [수정사항 1] 스테이지 세부 정보 및 성공/실패 여부에 따라 결과화면 구성 다이내믹 변경
+        function endGame(isWin) {
+            isGameState = false;
+            clearInterval(gameTimer);
+
+            const statusEl = document.getElementById('result-status');
+            const subtitleEl = document.getElementById('result-subtitle');
+            const badgeEl = document.getElementById('rank-badge');
+            const scoreInfoEl = document.getElementById('score-info');
+            const nextBtn = document.getElementById('next-stage-btn');
+
+            // 테마 클래스 완전 초기화
+            resultBox.className = "result-box";
+
+            if (isWin) {
+                statusEl.innerText = "STAGE CLEAR!";
+                scoreInfoEl.innerText = `현재 누적 점수: ${score}점`;
+                
+                if (currentStage === 1) {
+                    resultBox.classList.add('stage1-theme');
+                    subtitleEl.innerText = "1단계 통과 완료 (브론즈 등급)";
+                    badgeEl.innerText = "🥉";
+                    nextBtn.style.display = "block";
+                } else if (currentStage === 2) {
+                    resultBox.classList.add('stage2-theme');
+                    subtitleEl.innerText = "2단계 통과 완료 (실버 등급)";
+                    badgeEl.innerText = "🥈";
+                    nextBtn.style.display = "block";
+                } else if (currentStage === 3) {
+                    resultBox.classList.add('stage3-theme');
+                    statusEl.innerText = "ALL STAGE CLEAR!";
+                    subtitleEl.innerText = "최종 단계를 격파했습니다! (그랜드 VIP)";
+                    badgeEl.innerText = "🏆";
+                    nextBtn.style.display = "none"; // 마지막 단계 클리어시 넥스트 버튼 히든 처리
+                }
+            } else {
+                // 실패 테마 연출
+                resultBox.classList.add('fail-theme');
+                statusEl.innerText = "GAME OVER";
+                subtitleEl.innerText = `${currentStage}단계에서 타임오버 되었습니다.`;
+                badgeEl.innerText = "💥";
+                scoreInfoEl.innerText = `최종 누적 점수: ${score}점`;
+                nextBtn.style.display = "none";
+            }
+
+            setTimeout(() => {
+                modal.classList.add('active');
+            }, 800);
+        }
+
+        // 결과화면용 제어 인터랙션 함수 군 [다음단계 / 다시하기 / 홈으로]
+        function nextStageAction() {
+            if (currentStage < 3) {
+                enterStage(currentStage + 1);
+            }
+        }
+
+        function retryStageAction() {
+            enterStage(currentStage);
+        }
+
+        function backToHomeAction() {
+            clearInterval(gameTimer);
+            isGameState = false;
+            modal.classList.remove('active');
+            gameView.classList.remove('active');
+            introView.classList.add('active');
+            createDeck(1);
+        }
+
+        // 핸드트래킹 바인딩 기반 인터랙션 충돌 연산 처리 파트
+        function processKioskHandTracking(x, y, isPinchActive) {
+            pointerHint.style.left = `${x}px`;
+            pointerHint.style.top = `${y}px`;
+
+            const pRect = pointerHint.getBoundingClientRect();
+            const pX = pRect.left + pRect.width / 2;
+            const pY = pRect.top + pRect.height / 2;
+
+            // 도메인 내부 클릭 가능 활성 타겟 엘리먼트 전체 스캔 및 충돌 매핑
+            const activeButtons = document.querySelectorAll('.btn:not(:disabled)');
+            activeButtons.forEach(btn => {
+                const btnRect = btn.getBoundingClientRect();
+                if (pX >= btnRect.left && pX <= btnRect.right && pY >= btnRect.top && pY <= btnRect.bottom) {
+                    btn.classList.add('hovered');
+                    if (isPinchActive && !isPinching) {
+                        btn.click();
+                    }
+                } else {
+                    btn.classList.remove('hovered');
+                }
+            });
+
+            // 카드 리스트 컴포넌트 실시간 인터랙션 매핑 파트
+            if (isGameState && !isLock) {
+                document.querySelectorAll('.card-wrapper').forEach(card => {
+                    const cardRect = card.getBoundingClientRect();
+                    if (pX >= cardRect.left && pX <= cardRect.right && pY >= cardRect.top && pY <= cardRect.bottom) {
+                        card.classList.add('hovered');
+                        if (isPinchActive && !isPinching) {
+                            card.classList.remove('hovered');
+                            selectCard(card);
+                        }
+                    } else {
+                        card.classList.remove('hovered');
+                    }
+                });
+            }
+
+            isPinching = isPinchActive;
+        }
+
+        // MediaPipe 랜드마크 분석 파서
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand = results.multiHandLandmarks[0];
+                const indexFinger = hand[8]; 
+                const thumb = hand[4];        
+
+                const targetX = (1 - indexFinger.x) * 540; 
+                const targetY = indexFinger.y * 960;
+
+                const distance = Math.hypot(indexFinger.x - thumb.x, indexFinger.y - thumb.y);
+                const pinchDetected = distance < 0.045; // 핀치 제스처 임계 감도 세팅
+
+                if (pinchDetected) {
+                    pointerHint.classList.add('pinching');
+                } else {
+                    pointerHint.classList.remove('pinching');
+                }
+
+                processKioskHandTracking(targetX, targetY, pinchDetected);
+            }
+        }
+
+        // 미디어파이프 엔진 인스턴스 구축
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+        hands.setOptions({
+            maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.55, minTrackingConfidence: 0.55
+        });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({ image: videoElement }); },
+            width: 640, height: 480
+        });
+        camera.start();
+
+        // 파티클 피드백 이펙트 
+        let particles = [];
+        function triggerGoldEffect(targetCard) {
+            canvas.style.display = "block";
+            canvas.width = 540; canvas.height = 960;
+            const rect = targetCard.getBoundingClientRect();
+            const containerRect = document.getElementById('game-container').getBoundingClientRect();
+            
+            const startX = rect.left - containerRect.left + rect.width / 2;
+            const startY = rect.top - containerRect.top + rect.height / 2;
+            
+            for (let i = 0; i < 30; i++) {
+                particles.push({
+                    x: startX, y: startY,
+                    vx: (Math.random() - 0.5) * 12, vy: (Math.random() - 0.5) * 12,
+                    radius: Math.random() * 3 + 2, life: Math.random() * 25 + 15
+                });
+            }
+            
+            function animate() {
+                ctx.clearRect(0, 0, 540, 960);
+                let hasAlive = false;
+                particles.forEach(p => {
+                    if (p.life > 0) {
+                        hasAlive = true; p.x += p.vx; p.y += p.vy; p.life--;
+                        ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(252, 211, 77, ${p.life / 40})`;
+                        ctx.fill();
+                    }
+                });
+                if (hasAlive) requestAnimationFrame(animate);
+                else { canvas.style.display = "none"; particles = []; }
+            }
+            animate();
+        }
+
+        function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+        window.onload = () => { createDeck(1); };
+    </script>
+</body>
+</html>
