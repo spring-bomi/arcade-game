@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion Pop: Inside Your Core</title>
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;700;900&family=Noto+Sans+KR:wght@300;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --joy: #FFD700; --sadness: #4169E1; --anger: #FF4500;
+            --disgust: #32CD32; --fear: #9370DB; --gold: #FFF700;
+            --bg-dark: #050112;
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: var(--bg-dark);
+            color: white; font-family: 'Urbanist', 'Noto Sans KR', sans-serif;
+            overflow: hidden;
+            user-select: none; /* 드래그 방지 */
+        }
+
+        /* 공통 레이아웃 */
+        .screen {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            z-index: 100; transition: opacity 0.5s ease;
+        }
+        .hidden { opacity: 0; pointer-events: none; }
+
+        /* 1. Intro Screen */
+        #intro-screen {
+            background: radial-gradient(circle, #1a0b3a 0%, #050112 100%);
+            text-align: center;
+        }
+        .logo {
+            font-size: 80px; font-weight: 900; letter-spacing: -2px;
+            background: linear-gradient(to bottom, #fff 30%, #ff00ff 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            margin-bottom: 10px; filter: drop-shadow(0 0 20px rgba(255,0,255,0.5));
+        }
+        .subtitle { font-size: 24px; color: #a29bfe; margin-bottom: 40px; }
+        
+        .mode-btns {
+            display: flex; gap: 20px; justify-content: center; margin-bottom: 20px;
+        }
+        .btn-start {
+            padding: 15px 40px; font-size: 20px; font-weight: bold;
+            background: transparent; color: white; border: 2px solid white;
+            border-radius: 50px; cursor: pointer; transition: 0.3s;
+            box-shadow: 0 0 15px rgba(255,255,255,0.2);
+        }
+        .btn-cam { border-color: #FFD700; color: #FFD700; }
+        .btn-cam:hover { background: #FFD700; color: #000; box-shadow: 0 0 30px #FFD700; }
+        
+        .btn-mouse { border-color: #4169E1; color: #4169E1; }
+        .btn-mouse:hover { background: #4169E1; color: #fff; box-shadow: 0 0 30px #4169E1; }
+
+        .btn-replay {
+            padding: 15px 60px; font-size: 20px; font-weight: bold;
+            background: transparent; color: white; border: 2px solid white;
+            border-radius: 50px; cursor: pointer; transition: 0.3s; margin-top: 30px;
+        }
+        .btn-replay:hover { background: white; color: black; box-shadow: 0 0 30px white; }
+
+        /* 2. Game Screen HUD */
+        #game-ui {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 50; display: none;
+        }
+        .hud-top {
+            display: flex; justify-content: space-between; width: 90%;
+            margin-top: 30px; align-items: flex-start;
+        }
+        .hud-box { background: rgba(0,0,0,0.4); padding: 10px 20px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.2); }
+        .label { font-size: 14px; color: #aaa; text-transform: uppercase; }
+        .value { font-size: 32px; font-weight: bold; }
+        
+        .emotion-legend {
+            position: absolute; top: 150px; left: 5%;
+            background: rgba(0,0,0,0.6); padding: 15px; border-radius: 15px;
+            font-size: 14px; border-left: 4px solid #ff00ff;
+        }
+        .legend-item { display: flex; align-items: center; margin-bottom: 8px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 10px; }
+
+        .combo-container {
+            position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%);
+            text-align: center; transition: 0.2s scale;
+        }
+        .combo-text { font-size: 60px; font-weight: 900; font-style: italic; color: #f1c40f; text-shadow: 0 0 20px rgba(241, 196, 15, 0.8); }
+
+        /* 3. Ending Screen */
+        #result-screen {
+            background: rgba(5, 1, 18, 0.95);
+            backdrop-filter: blur(10px);
+        }
+        .result-card {
+            width: 400px; background: #130f2b; border-radius: 30px;
+            padding: 40px; border: 1px solid rgba(255,255,255,0.1);
+            text-align: center; box-shadow: 0 0 50px rgba(0,0,0,0.5);
+        }
+        .final-score { font-size: 64px; color: #f1c40f; margin: 20px 0; }
+        .ranking-table { width: 100%; margin-top: 20px; border-top: 1px solid #333; }
+        .rank-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #222; }
+        .rank-me { color: #f1c40f; font-weight: bold; background: rgba(241, 196, 15, 0.1); border-radius: 8px; padding: 12px 10px;}
+
+        /* Game Elements */
+        #video-element { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); filter: brightness(0.6) contrast(1.2); }
+        #game-canvas { position: absolute; width: 100%; height: 100%; z-index: 5; /* transform은 js에서 제어 */ }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 200; font-size: 20px; letter-spacing: 2px; }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <div id="loading" class="hidden">INITIALIZING AI...</div>
+
+    <div id="intro-screen" class="screen">
+        <div class="logo">EMOTION POP</div>
+        <div class="subtitle">: INSIDE YOUR CORE<br>터뜨릴수록 드러나는 나의 감정</div>
+        
+        <div class="mode-btns">
+            <button class="btn-start btn-cam" onclick="startGame('camera')">📷 카메라 모드</button>
+            <button class="btn-start btn-mouse" onclick="startGame('mouse')">🖱️ 마우스 모드</button>
+        </div>
+        <p style="color:#aaa; font-size:14px; text-align:center;">
+            카메라 모드: 손가락을 휘둘러 구슬을 터뜨리세요.<br>
+            마우스 모드: 클릭하거나 드래그하여 구슬을 터뜨리세요.
+        </p>
+    </div>
+
+    <div id="game-ui">
+        <div class="hud-top">
+            <div class="hud-box">
+                <div class="label">Time</div>
+                <div class="value" id="timer">60</div>
+            </div>
+            <div class="hud-box">
+                <div class="label">Score</div>
+                <div class="value" id="score">0</div>
+            </div>
+            <div class="hud-box">
+                <div class="label">Combo</div>
+                <div class="value" id="combo-hud">x0</div>
+            </div>
+        </div>
+
+        <div class="emotion-legend">
+            <div class="legend-item"><div class="dot" style="background:var(--joy)"></div> 기쁨(노랑) +10</div>
+            <div class="legend-item"><div class="dot" style="background:var(--sadness)"></div> 슬픔(파랑) +5</div>
+            <div class="legend-item"><div class="dot" style="background:var(--anger)"></div> 분노(빨강) +15</div>
+            <div class="legend-item"><div class="dot" style="background:var(--disgust)"></div> 까칠(초록) +8</div>
+            <div class="legend-item"><div class="dot" style="background:var(--gold)"></div> 황금 구슬 +30</div>
+        </div>
+
+        <div class="combo-container" id="combo-display" style="opacity: 0;">
+            <div style="font-size:20px; color:#fff;">COMBO UP!</div>
+            <div class="combo-text">x3</div>
+        </div>
+    </div>
+
+    <div id="result-screen" class="screen hidden">
+        <div class="result-card">
+            <div class="label">GAME RESULT</div>
+            <div class="final-score" id="final-score-val">0</div>
+            <div class="ranking-table" id="ranking-list">
+                </div>
+            <button class="btn-replay" onclick="location.reload()">REPLAY</button>
+        </div>
+    </div>
+
+    <video id="video-element" autoplay playsinline></video>
+    <canvas id="game-canvas"></canvas>
+
+    <script>
+        const videoElement = document.getElementById('video-element');
+        const canvasElement = document.getElementById('game-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const timerEl = document.getElementById('timer');
+        const comboHudEl = document.getElementById('combo-hud');
+        const comboDisplay = document.getElementById('combo-display');
+        const rankingListEl = document.getElementById('ranking-list');
+
+        let playMode = 'camera'; // 'camera' or 'mouse'
+        let mouseX = -100;
+        let mouseY = -100;
+        let isMouseDown = false;
+
+        let score = 0;
+        let combo = 0;
+        let timeLeft = 60;
+        let gameActive = false;
+        let orbs = [];
+
+        const EMOTIONS = [
+            { name: 'joy', color: '#FFD700', points: 10, emoji: '😊' },
+            { name: 'sadness', color: '#4169E1', points: 5, emoji: '😢' },
+            { name: 'anger', color: '#FF4500', points: 15, emoji: '😠' },
+            { name: 'disgust', color: '#32CD32', points: 8, emoji: '😒' },
+            { name: 'gold', color: '#FFF700', points: 30, emoji: '⭐' }
+        ];
+
+        const defaultRanking = [
+            { name: 'Emotion Master', score: 7920 },
+            { name: 'Feeling Explorer', score: 6870 },
+            { name: 'Vibe Hunter', score: 6120 }
+        ];
+
+        function resize() {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Orb {
+            constructor() {
+                const type = Math.random() > 0.05 ? EMOTIONS[Math.floor(Math.random() * 4)] : EMOTIONS[4];
+                this.type = type;
+                this.radius = type.name === 'gold' ? 40 : 30 + Math.random() * 10;
+                this.x = Math.random() * (canvasElement.width - 100) + 50;
+                this.y = -50;
+                this.speed = 2 + Math.random() * 4;
+                this.pulse = 0;
+            }
+            update() { 
+                this.y += this.speed; 
+                this.pulse += 0.1;
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.type.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius + Math.sin(this.pulse) * 3, 0, Math.PI * 2);
+                ctx.fillStyle = this.type.color;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.font = `${this.radius}px Arial`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(this.type.emoji, this.x, this.y);
+                ctx.restore();
+            }
+        }
+
+        // --- 마우스/터치 이벤트 핸들러 ---
+        function updateMousePos(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        }
+        canvasElement.addEventListener('mousemove', e => updateMousePos(e));
+        canvasElement.addEventListener('mousedown', e => { isMouseDown = true; updateMousePos(e); });
+        canvasElement.addEventListener('mouseup', () => isMouseDown = false);
+        canvasElement.addEventListener('mouseleave', () => { isMouseDown = false; mouseX = -100; });
+
+        // 모바일 터치 지원
+        canvasElement.addEventListener('touchstart', e => { e.preventDefault(); isMouseDown = true; mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY; }, {passive: false});
+        canvasElement.addEventListener('touchmove', e => { e.preventDefault(); mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY; }, {passive: false});
+        canvasElement.addEventListener('touchend', e => { e.preventDefault(); isMouseDown = false; }, {passive: false});
+
+
+        // --- 카메라 핸즈 로직 ---
+        let fingers = [];
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+        hands.onResults(results => {
+            if(playMode !== 'camera') return;
+            fingers = [];
+            if (results.multiHandLandmarks) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    fingers.push({ x: landmarks[8].x * canvasElement.width, y: landmarks[8].y * canvasElement.height });
+                }
+            }
+            render();
+        });
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { 
+                if(playMode === 'camera') await hands.send({image: videoElement}); 
+            },
+            width: 1280, height: 720
+        });
+
+        // --- 게임 시작 ---
+        function startGame(mode) {
+            playMode = mode;
+            document.getElementById('intro-screen').classList.add('hidden');
+            
+            if (mode === 'camera') {
+                document.getElementById('loading').classList.remove('hidden');
+                canvasElement.style.transform = 'scaleX(-1)'; // 카메라 렌즈 거울 효과
+                canvasElement.style.cursor = 'default';
+                
+                camera.start().then(() => {
+                    document.getElementById('loading').classList.add('hidden');
+                    initGameData();
+                });
+            } else {
+                // 마우스 모드
+                canvasElement.style.transform = 'scaleX(1)'; // 마우스 위치와 캔버스 좌표 일치
+                canvasElement.style.cursor = 'none'; // 커스텀 십자선 사용
+                videoElement.style.display = 'none'; // 비디오 숨김
+                initGameData();
+                requestAnimationFrame(mouseRenderLoop); // 마우스 렌더링 루프 실행
+            }
+        }
+
+        function initGameData() {
+            document.getElementById('game-ui').style.display = 'block';
+            gameActive = true;
+            score = 0;
+            combo = 0;
+            timeLeft = 60;
+            orbs = [];
+            scoreEl.innerText = score;
+            startTimer();
+            spawnLoop();
+        }
+
+        function startTimer() {
+            const interval = setInterval(() => {
+                if (!gameActive) return clearInterval(interval);
+                timeLeft--;
+                timerEl.innerText = timeLeft;
+                if (timeLeft <= 0) endGame();
+            }, 1000);
+        }
+
+        function spawnLoop() {
+            if (!gameActive) return;
+            if (orbs.length < 12) orbs.push(new Orb());
+            setTimeout(spawnLoop, 600 + Math.random() * 600);
+        }
+
+        // --- 랭킹 관련 로직 ---
+        function getLeaderboard() {
+            const stored = localStorage.getItem('emotionPopLeaderboard');
+            if (stored) return JSON.parse(stored);
+            localStorage.setItem('emotionPopLeaderboard', JSON.stringify(defaultRanking));
+            return defaultRanking;
+        }
+
+        function processRanking(newScore) {
+            let board = getLeaderboard();
+            let playerName = prompt("게임 종료! 랭킹에 등록할 이름을 입력하세요\n(같은 이름 입력 시 점수가 누적됩니다):", "Player") || "Player";
+
+            let existingPlayer = board.find(p => p.name.toLowerCase() === playerName.toLowerCase());
+            if (existingPlayer) {
+                existingPlayer.score += newScore; 
+            } else {
+                board.push({ name: playerName, score: newScore });
+            }
+
+            board.sort((a, b) => b.score - a.score);
+            board = board.slice(0, 5);
+            localStorage.setItem('emotionPopLeaderboard', JSON.stringify(board));
+
+            rankingListEl.innerHTML = '';
+            board.forEach((entry, index) => {
+                const isMe = entry.name.toLowerCase() === playerName.toLowerCase();
+                const div = document.createElement('div');
+                div.className = `rank-item ${isMe ? 'rank-me' : ''}`;
+                
+                let medal = `${index + 1}. `;
+                if(index === 0) medal = '🥇 1. ';
+                if(index === 1) medal = '🥈 2. ';
+                if(index === 2) medal = '🥉 3. ';
+
+                div.innerHTML = `<span>${medal}${entry.name}</span><span>${entry.score.toLocaleString()}</span>`;
+                rankingListEl.appendChild(div);
+            });
+        }
+
+        function endGame() {
+            gameActive = false;
+            canvasElement.style.cursor = 'default';
+            document.getElementById('game-ui').style.display = 'none';
+            document.getElementById('result-screen').classList.remove('hidden');
+            document.getElementById('final-score-val').innerText = score.toLocaleString();
+            
+            setTimeout(() => {
+                processRanking(score);
+            }, 100);
+        }
+
+        function showCombo() {
+            comboDisplay.style.opacity = 1;
+            comboDisplay.querySelector('.combo-text').innerText = `x${combo}`;
+            comboDisplay.style.scale = 1.2;
+            setTimeout(() => { comboDisplay.style.scale = 1; }, 100);
+        }
+
+        // 마우스 모드를 위한 렌더링 루프 (카메라 모드일때는 hands.onResults가 트리거함)
+        function mouseRenderLoop() {
+            if (playMode === 'mouse' && gameActive) {
+                render();
+                requestAnimationFrame(mouseRenderLoop);
+            }
+        }
+
+        // 통합 렌더러
+        function render() {
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // 3D 격자 배경
+            canvasCtx.strokeStyle = "rgba(100, 100, 255, 0.2)";
+            canvasCtx.lineWidth = 1;
+            for(let i=0; i<canvasElement.width; i+=50) {
+                canvasCtx.beginPath(); canvasCtx.moveTo(i, 0); canvasCtx.lineTo(i, canvasElement.height); canvasCtx.stroke();
+            }
+            for(let i=0; i<canvasElement.height; i+=50) {
+                canvasCtx.beginPath(); canvasCtx.moveTo(0, i); canvasCtx.lineTo(canvasElement.width, i); canvasCtx.stroke();
+            }
+
+            if (!gameActive) return;
+
+            // 충돌 감지 포인트 취합
+            let hitPoints = [];
+            if (playMode === 'camera') {
+                hitPoints = fingers;
+            } else if (playMode === 'mouse' && isMouseDown) { // 마우스 클릭/드래그 중에만 타격 판정
+                hitPoints = [{x: mouseX, y: mouseY}];
+            }
+
+            for (let i = orbs.length - 1; i >= 0; i--) {
+                let orb = orbs[i];
+                orb.update();
+                orb.draw(canvasCtx);
+
+                // 타격 판정
+                hitPoints.forEach(p => {
+                    const dist = Math.hypot(p.x - orb.x, p.y - orb.y);
+                    if (dist < orb.radius + 20) {
+                        score += orb.type.points * (combo > 0 ? combo : 1);
+                        combo++;
+                        scoreEl.innerText = score.toLocaleString();
+                        comboHudEl.innerText = `x${combo}`;
+                        if (combo >= 3) showCombo();
+                        orbs.splice(i, 1);
+                    }
+                });
+
+                // 놓침 판정
+                if (orb.y > canvasElement.height + 50) {
+                    orbs.splice(i, 1);
+                    combo = 0; 
+                    comboHudEl.innerText = `x0`;
+                    comboDisplay.style.opacity = 0;
+                }
+            }
+
+            // 시각적 포인터 그리기
+            if (playMode === 'camera') {
+                fingers.forEach(f => {
+                    canvasCtx.beginPath(); canvasCtx.arc(f.x, f.y, 15, 0, Math.PI*2);
+                    canvasCtx.fillStyle = "white"; canvasCtx.shadowBlur = 15; canvasCtx.shadowColor = "cyan";
+                    canvasCtx.fill();
+                });
+            } else if (playMode === 'mouse' && mouseX > 0) {
+                canvasCtx.save();
+                
+                // 마우스 클릭 시 커서 활성화 연출
+                canvasCtx.beginPath();
+                canvasCtx.arc(mouseX, mouseY, 15, 0, Math.PI*2);
+                canvasCtx.strokeStyle = isMouseDown ? "#FFD700" : "rgba(255,255,255,0.4)";
+                canvasCtx.lineWidth = 2;
+                canvasCtx.stroke();
+
+                canvasCtx.beginPath();
+                canvasCtx.arc(mouseX, mouseY, 4, 0, Math.PI*2);
+                canvasCtx.fillStyle = isMouseDown ? "#FF4500" : "rgba(255,255,255,0.8)";
+                canvasCtx.fill();
+
+                if(isMouseDown) {
+                    canvasCtx.strokeStyle = "#FFD700";
+                    canvasCtx.beginPath(); canvasCtx.moveTo(mouseX-20, mouseY); canvasCtx.lineTo(mouseX+20, mouseY); canvasCtx.stroke();
+                    canvasCtx.beginPath(); canvasCtx.moveTo(mouseX, mouseY-20); canvasCtx.lineTo(mouseX, mouseY+20); canvasCtx.stroke();
+                }
+                canvasCtx.restore();
+            }
+        }
+    </script>
+</body>
+</html>
