@@ -2,17 +2,146 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>아케이드 게임 모음</title>
+    <style>
+        /* 기본 폰트 및 밝은 배경 설정 (레트로 감성의 파스텔 옐로우) */
+        body {
+            font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+            background-color: #fdfaf0;
+            color: #333333;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 80vh;
+        }
+
+        /* 게임 포털을 감싸는 귀여운 게임기 모양의 박스 */
+        .container {
+            background-color: #ffffff;
+            border: 4px solid #333333;
+            border-radius: 20px;
+            box-shadow: 8px 8px 0px #e0dbcd;
+            padding: 40px 30px;
+            max-width: 480px;
+            width: 100%;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        /* 메인 타이틀 디자인 */
+        h1 {
+            font-size: 1.8rem;
+            color: #222222;
+            margin-top: 0;
+            margin-bottom: 10px;
+            word-break: keep-all;
+            display: inline-block;
+            background: linear-gradient(to top, #ffe596 40%, transparent 40%); /* 텍스트 강조 밑줄 효과 */
+            padding: 0 5px;
+        }
+
+        /* 안내 문구 */
+        p {
+            font-size: 1rem;
+            color: #666666;
+            margin-bottom: 35px;
+            font-weight: 500;
+        }
+
+        /* 리스트 스타일 초기화 */
+        ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 16px; /* 버튼 간격 */
+        }
+
+        li {
+            width: 100%;
+        }
+
+        /* 아케이드 버튼 스타일의 게임 링크 */
+        ul li a {
+            display: block;
+            text-decoration: none;
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #333333;
+            background-color: #f0f7ff; /* 부드러운 하늘색 */
+            padding: 16px 20px;
+            border: 3px solid #333333;
+            border-radius: 12px;
+            box-shadow: 0px 5px 0px #333333; /* 입체감 있는 아케이드 버튼 느낌 */
+            transition: all 0.1s ease;
+            text-align: left;
+            position: relative;
+            padding-left: 50px;
+        }
+
+        /* 버튼 마우스 올렸을 때 효과 */
+        ul li a:hover {
+            background-color: #e1f0ff;
+            transform: translateY(-2px);
+            box-shadow: 0px 7px 0px #333333;
+        }
+
+        /* 버튼을 눌렀을 때 쏙 들어가는 효과 */
+        ul li a:active {
+            transform: translateY(5px);
+            box-shadow: 0px 0px 0px #333333;
+        }
+
+        /* 게임 번호 아이콘 디자인 */
+        ul li a::before {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 24px;
+            background-color: #333333;
+            color: #ffffff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+        }
+
+        /* 각 버튼에 순서대로 번호 부여 */
+        ul li:nth-child(1) a::before { content: "1"; }
+        ul li:nth-child(2) a::before { content: "2"; }
+        ul li:nth-child(3) a::before { content: "3"; }
+
+        /* 하단 푸터 느낌의 아기자기한 장식 */
+        .footer-deco {
+            margin-top: 30px;
+            font-size: 1.2rem;
+            letter-spacing: 5px;
+            color: #ccc;
+        }
+    </style>
 </head>
 <body>
-    <h1>🎮 아케이드 게임 모음_보미ver 🎮</h1>
-    <p>플레이할 게임을 선택하세요!</p>
 
-    <ul>
-        <li><a href="shopping-cart/index.html">1. 쇼핑카트 중심잡기</a></li>
-        <li><a href="chopstick/index.html">2. 젓가락 마스터
-</a></li>
-	<li><a href="card-shuffle/index.html">3. 카드 맞추기</a></li>
-    </ul>
+    <div class="container">
+        <h1>🎮 아케이드 게임 모음_보미ver 🎮</h1>
+        <p>플레이할 게임을 선택하세요!</p>
+
+        <ul>
+            <li><a href="shopping-cart/index.html">쇼핑카트 중심잡기</a></li>
+            <li><a href="chopstick/index.html">젓가락 마스터</a></li>
+            <li><a href="card-shuffle/index.html">카드 맞추기</a></li>
+        </ul>
+        
+        <div class="footer-deco">🕹️ 🔴 🟡 🔵</div>
+    </div>
+
 </body>
 </html>
