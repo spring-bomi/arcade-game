@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>가상 젓가락 마스터 v5.1</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
+
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #FFF9F2; font-family: 'Jua', sans-serif; touch-action: none; user-select: none; }
+        
+        .overlay-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; background: radial-gradient(circle, #FFE66D 0%, #FF6B6B 100%); color: #333; }
+        h1 { font-size: 54px; color: #fff; text-shadow: 2px 2px 0 #FF6B6B, -1px -1px 0 #FF6B6B, 4px 4px 10px rgba(0,0,0,0.3); margin: 0 0 20px 0; }
+        .panel { background: rgba(255, 255, 255, 0.95); padding: 25px; border-radius: 15px; box-shadow: 0 10px 20px rgba(0,0,0,0.2); max-width: 90%; margin-bottom: 20px; }
+        .section-title { font-size: 20px; color: #FF6B6B; margin: 10px 0; border-bottom: 2px dashed #ddd; padding-bottom: 5px; }
+        .btn-group { display: flex; gap: 10px; justify-content: center; margin-bottom: 15px; flex-wrap: wrap; }
+        .toggle-btn { padding: 10px 20px; font-family: 'Jua', sans-serif; font-size: 16px; border: 2px solid #ccc; border-radius: 20px; background: #fff; cursor: pointer; transition: 0.2s; }
+        .toggle-btn.active { background: #4ECDC4; color: #fff; border-color: #4ECDC4; transform: scale(1.05); }
+        .action-btn { font-family: 'Jua', sans-serif; font-size: 28px; padding: 15px 50px; background-color: #FF6B6B; color: white; border: none; border-radius: 40px; cursor: pointer; box-shadow: 0 6px 0 #d9534f; transition: transform 0.1s, box-shadow 0.1s; margin-top: 10px; }
+        .action-btn:active { transform: translateY(6px); box-shadow: 0 0 0 #d9534f; }
+
+        #gameCanvas { display: none; width: 100vw; height: 100vh; }
+        #videoElement { display: none; }
+        #uiLayer { position: absolute; top: 20px; left: 20px; pointer-events: none; display: none; z-index: 10; width: calc(100% - 40px); display: flex; justify-content: space-between; }
+        .hud-box { font-size: 26px; background: #fff; padding: 10px 20px; border-radius: 15px; border: 3px solid #333; box-shadow: 0 4px 0 #333; position: relative; }
+        .text-salmon { color: #FF6B6B; } .text-mint { color: #4ECDC4; }
+
+        /* 콤보 UI */
+        #comboDisplay { position: absolute; top: 100px; left: 50%; transform: translateX(-50%); font-size: 48px; color: #FFEB3B; text-shadow: 2px 2px 0 #FF9800, 4px 4px 0 #E65100; opacity: 0; transition: opacity 0.2s, transform 0.1s; pointer-events: none; z-index: 15; }
+        #comboDisplay.active { opacity: 1; transform: translateX(-50%) scale(1.2); }
+
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 24px; background: white; padding: 30px; border-radius: 15px; display: none; z-index: 20; border: 3px solid #4ECDC4; }
+        .ranking-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        .ranking-table th, .ranking-table td { padding: 8px; border-bottom: 1px solid #eee; font-size: 18px; }
+        .ranking-table .my-rank { background: #FFE66D; font-weight: bold; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="introScreen" class="overlay-screen">
+        <h1>🥢 젓가락 마스터 v5.1</h1>
+        <div class="panel">
+            <div class="section-title">✨ 특수 아이템 안내 ✨</div>
+            <div style="font-size: 16px; margin-bottom: 15px; color: #666;">
+                🍣 새우/만두/초밥: <b>가장 흔하고 안정적!</b><br>
+                🍙 무거운 주먹밥: 떨어질 때 <b>엄청 빨리 떨어집니다.</b><br>
+                🐙 문어 & 💎 보석: 판정이 좁아 <b>정확히 잡아야 합니다.</b>
+            </div>
+            <div class="section-title">모드 선택</div>
+            <div class="btn-group">
+                <button class="toggle-btn active" data-type="game" data-val="time">⏱️ 점수 내기 (60초)</button>
+                <button class="toggle-btn" data-type="game" data-val="survival">❤️ 서바이벌</button>
+            </div>
+            <div class="section-title">난이도 (젓가락 길이 & 판정)</div>
+            <div class="btn-group">
+                <button class="toggle-btn active" data-type="diff" data-val="easy">😊 쉬움</button>
+                <button class="toggle-btn" data-type="diff" data-val="normal">😐 보통</button>
+                <button class="toggle-btn" data-type="diff" data-val="hard">😈 어려움</button>
+            </div>
+        </div>
+        <button id="startBtn" class="action-btn">게임 시작!</button>
+    </div>
+
+    <div id="endScreen" class="overlay-screen" style="display: none;">
+        <h1>게임 종료!</h1>
+        <div class="panel" style="min-width: 320px;">
+            <h2 id="endResultText" class="text-salmon" style="margin-top: 0;">점수: 0</h2>
+            <div class="section-title">🏆 내 기록 TOP 5</div>
+            <table class="ranking-table" id="rankingTable"></table>
+        </div>
+        <button id="retryBtn" class="action-btn">다시 하기</button>
+    </div>
+
+    <div id="uiLayer">
+        <div class="hud-box">점수: <span id="scoreText" class="text-salmon">0</span></div>
+        <div class="hud-box" id="modeInfoText">시간: <span id="timeText" class="text-mint">60.0</span></div>
+    </div>
+    <div id="comboDisplay">COMBO x2!</div>
+    
+    <div id="loading">카메라 AI 로딩 중... ⏳</div>
+
+    <video id="videoElement" autoplay playsinline></video>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        // --- 1. Web Audio API (효과음 생성기) ---
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+        function playSound(type) {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+            if (type === 'grab') { 
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'score') { 
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.setValueAtTime(1318, now + 0.1); 
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'error') { 
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'fever') { 
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.linearRampToValueAtTime(880, now + 0.5);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.5);
+                osc.start(now); osc.stop(now + 0.5);
+            }
+        }
+
+        const screens = { intro: document.getElementById('introScreen'), end: document.getElementById('endScreen'), game: document.getElementById('gameCanvas') };
+        const uis = { layer: document.getElementById('uiLayer'), score: document.getElementById('scoreText'), modeInfo: document.getElementById('modeInfoText'), loading: document.getElementById('loading'), combo: document.getElementById('comboDisplay') };
+        const canvasCtx = screens.game.getContext('2d');
+        const video = document.getElementById('videoElement');
+
+        let settings = { game: 'time', diff: 'easy' };
+        let gameState = 'intro';
+
+        const diffData = {
+            easy: { length: 60, tolerance: 40, lives: 5, beltSpeed: 3.5 },
+            normal: { length: 130, tolerance: 25, lives: 3, beltSpeed: 5 },
+            hard: { length: 220, tolerance: 15, lives: 1, beltSpeed: 7 }
+        };
+
+        let currentDiff = diffData.easy;
+        let score = 0; let lives = 0; let time = 60; let survivalTime = 0;
+        let comboCount = 0; let isFever = false;
+        let lastTime = Date.now();
+        let cursor = { x: 0, y: 0, isGrabbing: false }; 
+        let tip = { x: 0, y: 0 }; 
+        let grabbedObject = null;
+        
+        let items = [];
+        let particles = [];
+        let floatingTexts = [];
+        let shakeAmount = 0; 
+
+        const plate = {
+            width: 280, height: 160,
+            get x() { return screens.game.width / 2 - this.width / 2; },
+            get y() { return screens.game.height - this.height - 30; }
+        };
+
+        const belt = { get y() { return screens.game.height * 0.3; }, height: 90 };
+        
+        // 아이템 속성 차별화 (만두, 새우, 보석 추가)
+        const objectTypes = [
+            {t:'🍣', p:10, type:'normal', size: 60, hitMod: 1.0, gravityMod: 1.0}, // 일반 초밥
+            {t:'🍤', p:10, type:'normal', size: 60, hitMod: 1.0, gravityMod: 1.0}, // 일반 새우
+            {t:'🥟', p:15, type:'normal', size: 65, hitMod: 1.0, gravityMod: 1.2}, // 만두 (약간 큼)
+            {t:'🍙', p:15, type:'heavy', size: 65, hitMod: 1.0, gravityMod: 2.5}, // 무거움 (빨리 떨어짐)
+            {t:'🐙', p:20, type:'slippery', size: 50, hitMod: 0.5, gravityMod: 1.0}, // 미끄러움 (히트박스 작음)
+            {t:'💎', p:50, type:'slippery', size: 45, hitMod: 0.6, gravityMod: 1.5}, // 희귀 보석 (고득점)
+            {t:'🐛', p:-15, type:'bug', size: 55, hitMod: 1.0, gravityMod: 1.0} // 벌레
+        ];
+
+        document.querySelectorAll('.toggle-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const type = e.target.getAttribute('data-type');
+                document.querySelectorAll(`.toggle-btn[data-type="${type}"]`).forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                settings[type] = e.target.getAttribute('data-val');
+            });
+        });
+
+        function resize() { screens.game.width = window.innerWidth; screens.game.height = window.innerHeight; }
+        window.addEventListener('resize', resize); resize();
+
+        function spawnItem() {
+            if(gameState !== 'playing') return;
+            const obj = objectTypes[Math.floor(Math.random() * objectTypes.length)];
+            items.push({ x: -60, y: belt.y - 15, data: obj, isFalling: false, vy: 0 });
+            
+            let delay = Math.random() * 1500 + 800;
+            if(settings.game === 'survival') delay = Math.max(400, delay - (survivalTime * 10));
+            setTimeout(spawnItem, delay);
+        }
+
+        // --- 시각 효과 함수들 ---
+        function createParticles(x, y, color) {
+            for(let i=0; i<15; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 10,
+                    life: 1.0, color: color
+                });
+            }
+        }
+
+        function createFloatingText(x, y, text, color) {
+            floatingTexts.push({ x: x, y: y, text: text, life: 1.0, color: color });
+        }
+
+        function updateCombo(amount) {
+            if (amount > 0) {
+                comboCount++;
+                if (comboCount >= 5 && !isFever) {
+                    isFever = true; playSound('fever');
+                }
+                uis.combo.innerText = `COMBO x${comboCount}!`;
+                uis.combo.classList.add('active');
+                setTimeout(() => uis.combo.classList.remove('active'), 200);
+            } else {
+                comboCount = 0; isFever = false;
+                uis.combo.classList.remove('active');
+            }
+        }
+
+        function triggerShake(intensity) { shakeAmount = intensity; }
+
+        function updateLivesDisplay() { if(uis.lives) { uis.lives.innerText = '❤️'.repeat(Math.max(0, lives)); } }
+
+        function gameOver() {
+            gameState = 'ended';
+            screens.game.style.display = 'none'; uis.layer.style.display = 'none'; uis.combo.style.opacity = '0';
+            screens.end.style.display = 'flex';
+            
+            const resultText = document.getElementById('endResultText');
+            let finalStat = settings.game === 'time' ? score : parseFloat(survivalTime.toFixed(1));
+            resultText.innerText = settings.game === 'time' ? `최종 점수: ${score}점` : `생존 시간: ${survivalTime.toFixed(1)}초\n(점수: ${score})`;
+            
+            const storageKey = settings.game === 'time' ? 'chopstick_v5_time' : 'chopstick_v5_survival';
+            let ranks = JSON.parse(localStorage.getItem(storageKey)) || [];
+            const dateStr = new Date().toLocaleString('ko-KR', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+            ranks.forEach(r => r.isLatest = false);
+            ranks.push({ stat: finalStat, date: dateStr, isLatest: true });
+            ranks.sort((a, b) => b.stat - a.stat); ranks = ranks.slice(0, 5);
+            localStorage.setItem(storageKey, JSON.stringify(ranks));
+
+            const table = document.getElementById('rankingTable');
+            table.innerHTML = `<tr><th>순위</th><th>달성 일시</th><th>기록</th></tr>`;
+            ranks.forEach((r, idx) => {
+                table.innerHTML += `<tr class="${r.isLatest ? 'my-rank' : ''}"><td>${idx+1}위</td><td style="font-size:14px; color:#666;">${r.date}</td><td>${r.stat}${settings.game === 'time' ? '점' : '초'}</td></tr>`;
+            });
+        }
+
+        function gameLoop() {
+            if(gameState !== 'playing') return;
+            const now = Date.now();
+            const dt = (now - lastTime) / 1000;
+            lastTime = now;
+
+            if (settings.game === 'time') {
+                time -= dt; uis.time.innerText = Math.max(0, time).toFixed(1);
+                if (time <= 0) { gameOver(); return; }
+            } else {
+                survivalTime += dt; uis.time.innerText = survivalTime.toFixed(1);
+                if (lives <= 0) { gameOver(); return; }
+            }
+
+            canvasCtx.save();
+            if (shakeAmount > 0.5) {
+                canvasCtx.translate((Math.random() - 0.5) * shakeAmount, (Math.random() - 0.5) * shakeAmount);
+                shakeAmount *= 0.85;
+            }
+
+            if(isFever) canvasCtx.fillStyle = `hsl(${(Date.now()/10)%360}, 100%, 95%)`;
+            else canvasCtx.fillStyle = '#FFF9F2';
+            canvasCtx.fillRect(0, 0, screens.game.width, screens.game.height);
+
+            canvasCtx.fillStyle = '#444'; canvasCtx.fillRect(0, belt.y - belt.height/2, screens.game.width, belt.height);
+            let timeOffset = (Date.now() / 10) % 50;
+            canvasCtx.fillStyle = '#666';
+            for(let i = -50; i < screens.game.width; i += 50) {
+                canvasCtx.fillRect(i + timeOffset, belt.y - belt.height/2, 4, belt.height);
+            }
+
+            canvasCtx.fillStyle = '#fff'; canvasCtx.beginPath();
+            canvasCtx.ellipse(plate.x + plate.width/2, plate.y + plate.height/2, plate.width/2, plate.height/2, 0, 0, 2 * Math.PI);
+            canvasCtx.fill(); canvasCtx.strokeStyle = isFever ? '#FF9800' : '#4ECDC4'; canvasCtx.lineWidth = 10; canvasCtx.stroke();
+            canvasCtx.fillStyle = '#333'; canvasCtx.font = '28px Jua'; canvasCtx.fillText('내 접시', plate.x + plate.width/2 - 40, plate.y + plate.height/2 + 10);
+
+            let speedMult = settings.game === 'survival' ? 1 + (survivalTime * 0.02) : 1;
+
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+
+                if (grabbedObject === item) {
+                    item.x = tip.x - item.data.size / 2; item.y = tip.y - item.data.size / 2; 
+                } else if (item.isFalling) {
+                    item.vy += 0.8 * item.data.gravityMod; 
+                    item.y += item.vy;
+                } else {
+                    let speed = item.data.type === 'heavy' ? currentDiff.beltSpeed * 0.7 : currentDiff.beltSpeed;
+                    item.x += speed * speedMult; 
+                }
+
+                canvasCtx.font = `${item.data.size}px sans-serif`; canvasCtx.fillText(item.data.t, item.x, item.y + item.data.size);
+
+                if (item.x > screens.game.width || item.y > screens.game.height) {
+                    if (settings.game === 'survival' && !item.isFalling && item.data.type !== 'bug') {
+                        lives--; updateLivesDisplay(); playSound('error'); triggerShake(15); updateCombo(0);
+                    } else if (item.isFalling && item.data.type !== 'bug') {
+                        updateCombo(0); 
+                    }
+                    items.splice(i, 1);
+                }
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+                if(p.life <= 0) { particles.splice(i, 1); continue; }
+                canvasCtx.globalAlpha = p.life; canvasCtx.fillStyle = p.color;
+                canvasCtx.beginPath(); canvasCtx.arc(p.x, p.y, 6 * p.life, 0, Math.PI*2); canvasCtx.fill();
+            }
+            canvasCtx.globalAlpha = 1.0;
+
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                let f = floatingTexts[i];
+                f.y -= 2; f.life -= 0.02;
+                if(f.life <= 0) { floatingTexts.splice(i, 1); continue; }
+                canvasCtx.globalAlpha = f.life;
+                canvasCtx.fillStyle = f.color; canvasCtx.font = 'bold 36px Jua';
+                canvasCtx.fillText(f.text, f.x, f.y);
+            }
+            canvasCtx.globalAlpha = 1.0;
+
+            tip.x = cursor.x; tip.y = cursor.y + currentDiff.length;
+            const gap = cursor.isGrabbing ? 4 : 25;
+            canvasCtx.strokeStyle = '#8B4513'; canvasCtx.lineCap = 'round'; canvasCtx.lineWidth = 8;
+            
+            canvasCtx.beginPath(); canvasCtx.moveTo(cursor.x - gap, cursor.y); canvasCtx.lineTo(tip.x - (cursor.isGrabbing?2:10), tip.y); canvasCtx.stroke();
+            canvasCtx.beginPath(); canvasCtx.moveTo(cursor.x + gap, cursor.y); canvasCtx.lineTo(tip.x + (cursor.isGrabbing?2:10), tip.y); canvasCtx.stroke();
+
+            canvasCtx.fillStyle = cursor.isGrabbing ? (isFever ? 'rgba(255, 152, 0, 0.8)' : 'rgba(255, 107, 107, 0.8)') : 'rgba(78, 205, 196, 0.5)';
+            canvasCtx.beginPath(); canvasCtx.arc(tip.x, tip.y, currentDiff.tolerance, 0, 2 * Math.PI); canvasCtx.fill();
+
+            canvasCtx.restore(); 
+            requestAnimationFrame(gameLoop);
+        }
+
+        const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+
+        hands.onResults((results) => {
+            if (uis.loading.style.display !== 'none' && gameState === 'playing') {
+                uis.loading.style.display = 'none'; screens.game.style.display = 'block'; uis.layer.style.display = 'flex';
+                lastTime = Date.now(); gameLoop(); spawnItem();
+            }
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0 && gameState === 'playing') {
+                const landmarks = results.multiHandLandmarks[0];
+                let f1 = landmarks[4]; let f2 = landmarks[8]; 
+
+                let tx = (1 - ((f1.x + f2.x) / 2)) * screens.game.width;
+                let ty = ((f1.y + f2.y) / 2) * screens.game.height;
+
+                cursor.x += (tx - cursor.x) * 0.4; cursor.y += (ty - cursor.y) * 0.4;
+
+                const dist = Math.hypot(f1.x - f2.x, f1.y - f2.y);
+                const isGrabbingNow = dist < 0.05;
+
+                if (isGrabbingNow && !cursor.isGrabbing) {
+                    for (let item of items) {
+                        if (!item.isFalling && !grabbedObject) {
+                            let cx = item.x + item.data.size/2; let cy = item.y + item.data.size/2;
+                            let currentTol = currentDiff.tolerance * item.data.hitMod;
+                            if (Math.hypot(tip.x - cx, tip.y - cy) < currentTol + 15) {
+                                grabbedObject = item; 
+                                playSound('grab');
+                                createParticles(tip.x, tip.y, '#FFF');
+                                break;
+                            }
+                        }
+                    }
+                } else if (!isGrabbingNow && cursor.isGrabbing) {
+                    if (grabbedObject) {
+                        let cx = grabbedObject.x + grabbedObject.data.size/2; let cy = grabbedObject.y + grabbedObject.data.size/2;
+                        
+                        if (cx > plate.x && cx < plate.x + plate.width && cy > plate.y && cy < plate.y + plate.height) {
+                            if (grabbedObject.data.type === 'bug') {
+                                if (settings.game === 'survival') lives--; 
+                                updateLivesDisplay(); playSound('error'); triggerShake(20); updateCombo(0);
+                                createFloatingText(cx, cy, "-15", "#FF0000");
+                                score += grabbedObject.data.p;
+                            } else {
+                                playSound('score'); createParticles(cx, cy, '#FFEB3B');
+                                updateCombo(1);
+                                let earned = isFever ? grabbedObject.data.p * 2 : grabbedObject.data.p;
+                                score += earned;
+                                createFloatingText(cx, cy, `+${earned}`, isFever ? "#FF9800" : "#4ECDC4");
+                            }
+                            uis.score.innerText = score;
+                            items = items.filter(i => i !== grabbedObject);
+                        } else {
+                            grabbedObject.isFalling = true;
+                        }
+                        grabbedObject = null;
+                    }
+                }
+                cursor.isGrabbing = isGrabbingNow;
+            }
+        });
+
+        const camera = new Camera(video, { onFrame: async () => { await hands.send({image: video}); }, width: 640, height: 480, facingMode: 'user' });
+
+        document.getElementById('startBtn').addEventListener('click', () => {
+            initAudio(); 
+            currentDiff = diffData[settings.diff];
+            score = 0; items = []; grabbedObject = null; particles = []; floatingTexts = []; comboCount = 0; isFever = false; shakeAmount = 0;
+            
+            if (settings.game === 'time') { 
+                time = 60; uis.modeInfo.innerHTML = `시간: <span id="timeText" class="text-mint">${time.toFixed(1)}</span>초`; 
+            } else { 
+                lives = currentDiff.lives; survivalTime = 0; uis.modeInfo.innerHTML = `<span id="livesText"></span> | 생존: <span id="timeText" class="text-mint">0.0</span>초`; 
+                uis.lives = document.getElementById('livesText'); updateLivesDisplay();
+            }
+            
+            uis.time = document.getElementById('timeText'); uis.score.innerText = '0'; uis.combo.classList.remove('active');
+            
+            screens.intro.style.display = 'none'; uis.loading.style.display = 'block'; gameState = 'playing';
+
+            camera.start().catch((err) => { alert("웹 서버(Live Server)에서 실행해주세요!\n" + err); location.reload(); });
+        });
+
+        document.getElementById('retryBtn').addEventListener('click', () => {
+            screens.end.style.display = 'none'; screens.intro.style.display = 'flex'; gameState = 'intro';
+        });
+    </script>
+</body>
+</html>

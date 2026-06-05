@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>현대면세점 - 프리미엄 아케이드 에디션</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous"></script>
+    <style>
+        :root {
+            /* 🌟 밝고 고급스러운 화이트&골드 프리미엄 아케이드 팔레트 */
+            --white-premium: #ffffff;
+            --white-glass: rgba(255, 255, 255, 0.7);
+            --gold-light: #f9d976;
+            --gold-main: #d4af37; /* 정규 프리미엄 골드 */
+            --gold-dark: #aa7c11;
+            --gold-neon: rgba(212, 175, 55, 0.7);
+            --bg-bright: radial-gradient(circle at center, #ffffff 0%, #f7f9fc 100%);
+            --blue-accent: #00d2ff;
+        }
+        body {
+            margin: 0; padding: 0; overflow: hidden;
+            background: var(--bg-bright); /* 밝은 프리미엄 배경 */
+            color: #333; font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
+            perspective: 1000px;
+        }
+        #game-container {
+            position: relative; width: 100vw; height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+        }
+        #three-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+        #canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
+        
+        /* 🌟 비디오 피드 스타일 고급화 */
+        .video-feed {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 180px; border-radius: 12px;
+            border: 1px solid var(--gold-main); /* 골드 프레임 */
+            transform: scaleX(-1); z-index: 1; opacity: 0.15; /* 밝은 배경에 맞춰 오파시티 하향 */
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            transition: opacity 0.3s ease;
+        }
+        .video-feed:hover { opacity: 0.8; }
+        
+        /* 🌟 UI 레이어 고급 화이트 글래스모피즘 & 네온 글로우 스타일로 전면 교체 */
+        #ui-layer {
+            position: absolute; top: 30px; width: 100%;
+            display: flex; justify-content: center; gap: 40px; z-index: 4;
+            pointer-events: none;
+        }
+        .ui-box {
+            background: var(--white-glass); /* 화이트 반투명 배경 */
+            padding: 15px 35px; border-radius: 16px;
+            border: 1px solid rgba(212, 175, 55, 0.4); /* 미세한 골드 테두리 */
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1), 0 0 15px rgba(255, 255, 255, 0.5), inset 0 0 5px rgba(255,255,255,1);
+            backdrop-filter: blur(15px); /* 강화된 블러 효과 */
+            font-size: 20px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px;
+            color: #222; text-shadow: 0 0 1px rgba(212,175,55,0.2);
+            text-align: center;
+        }
+        /* 🌟 아케이드 네온 글로우 텍스트 */
+        .highlight { 
+            color: var(--gold-main); 
+            font-size: 26px; 
+            text-shadow: 0 0 8px rgba(212,175,55,0.7), 0 0 15px rgba(212,175,55,0.5), 0 0 2px rgba(212,175,55,1);
+        }
+        
+        /* 🌟 오버레이 & 모달 화이트 & 골드 프리미엄으로 전면 리모델링 */
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.85); /* 밝은 반투명 오버레이 */
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 10; backdrop-filter: blur(15px);
+        }
+        .panel {
+            background: var(--white-glass); /* 화이트 반투명 패널 */
+            border: 1px solid rgba(212,175,55,0.6); /* 골드 테두리 */
+            padding: 60px; border-radius: 40px; text-align: center;
+            max-width: 580px; width: 90%;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.15), inset 0 0 10px rgba(255,255,255,1), 0 0 20px rgba(212,175,55,0.3);
+            transform-style: preserve-3d;
+            animation: panelFloat 5s ease-in-out infinite alternate;
+        }
+        #modal { display: none; flex-direction: column; align-items: center; justify-content: center; }
+
+        @keyframes panelFloat {
+            0% { transform: translateY(0px) rotateX(1deg); }
+            100% { transform: translateY(-15px) rotateX(-1deg); }
+        }
+        h2 { 
+            margin-top: 0; font-size: 34px; color: #111; 
+            text-shadow: 0 0 10px rgba(212,175,55,0.5); /* 미세한 골드 네온 */
+        }
+        
+        /* 🌟 버튼 프리미엄 글로우 스타일로 교체 */
+        .btn {
+            padding: 18px 60px; font-size: 18px;
+            background: linear-gradient(135deg, var(--gold-light), var(--gold-main)); /* 골드 그라데이션 */
+            color: #111; border: none; border-radius: 50px;
+            cursor: pointer; font-weight: 900; margin-top: 35px;
+            box-shadow: 0 15px 30px rgba(212, 175, 55, 0.5), inset 0 -3px 5px rgba(0,0,0,0.15), 0 0 20px rgba(212,175,55,0.3); /* 골드 글로우 */
+            transition: all 0.25s cubic-bezier(0.2, 1.0, 0.2, 1.0);
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+        .btn:hover { 
+            transform: translateY(-5px) scale(1.05); 
+            box-shadow: 0 20px 40px rgba(212, 175, 55, 0.7), inset 0 -3px 5px rgba(0,0,0,0.15), 0 0 30px rgba(212,175,55,0.5); /* 강화된 글로우 */
+        }
+        .btn-secondary {
+            background: transparent; color: var(--gold-main); /* 골드 색상 */
+            border: 2px solid var(--gold-main); box-shadow: 0 0 15px rgba(212,175,55,0.3); margin-left: 15px; /* 미세 골드 네온 */
+        }
+        .btn-secondary:hover { background: rgba(212,175,55,0.1); color: #000; box-shadow: 0 0 25px rgba(212,175,55,0.5); } /* 강화된 네온 */
+        
+        /* 🌟 결과 이모지 & 아케이드 효과 */
+        #result-emoji {
+            font-size: 90px; margin-bottom: 25px;
+            display: inline-block; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.15)); /* 그림자 효과 */
+            animation: popIn 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.2) rotate(-30deg); opacity: 0; }
+            50% { transform: scale(1.2) rotate(5deg); opacity: 0.8; }
+            100% { transform: scale(1.0) rotate(0deg); opacity: 1; }
+        }
+
+        /* 🌟 결과 쿠폰 프리미엄 화이트 스타일 */
+        .coupon-wrapper { perspective: 1000px; margin: 35px 0; width: 100%; display: flex; justify-content: center; align-items: center; }
+        .coupon-container {
+            width: 360px; height: 160px;
+            background: linear-gradient(135deg, #ffffff 0%, #f7f9fc 100%); /* 화이트 그라데이션 */
+            border-radius: 20px; position: relative;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1), inset 0 2px 5px rgba(255,255,255,1);
+            border-left: 12px solid var(--gold-main); /* 골드 포인트 */
+            transform: rotateX(8deg) rotateY(-5deg); /* 미세 3D 틸팅 */
+            transition: transform 0.3s ease;
+        }
+        .coupon-container:hover { transform: rotateX(0) rotateY(0) scale(1.03); } /* 마우스 오버 시 정면 */
+        .coupon-brand { font-size: 13px; color: #777; letter-spacing: 4px; font-weight: 800; text-transform: uppercase; }
+        .coupon-value { font-size: 36px; font-weight: 900; color: #111; margin: 8px 0; text-shadow: 0 0 5px rgba(212,175,55,0.3); } /* 미세 골드 네온 */
+        .coupon-tag { font-size: 14px; background: rgba(0,0,0,0.08); color: var(--gold-dark); padding: 5px 18px; border-radius: 20px; font-weight: 700; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <video class="video-feed" id="video" autoplay playsinline></video>
+        <canvas id="three-canvas"></canvas>
+        <canvas id="canvas"></canvas>
+        
+        <div id="ui-layer">
+            <div class="ui-box">TIME LEFT <br><span id="time-display" class="highlight">30</span><span style="font-size:14px; color:#555;"> sec</span></div>
+            <div class="ui-box">MY ITEMS <br><span id="score-display" class="highlight">0</span><span style="font-size:14px; color:#555;"> ea</span></div>
+        </div>
+
+        <div id="overlay">
+            <div id="start-screen" class="panel">
+                <h2>🛍️ HYUNDAI DUTY FREE <br><span style="color:var(--gold-main); text-shadow: 0 0 8px var(--gold-neon);">PREMIUM ARCADE</span></h2>
+                <p style="text-align: center; line-height: 1.8; color: #555; font-size: 16px; margin-bottom: 35px;">
+                    양 손바닥을 펼쳐 가상의 럭셔리 트레이를 들어보세요.<br>
+                    하늘에서 떨어지는 <span style="color:var(--blue-accent); font-weight:bold; text-shadow: 0 0 5px rgba(0,210,255,0.3);">찬란한 3D 명품들</span>을 담으세요!<br><br>
+                    <span style="background: rgba(212,175,55,0.1); color: var(--gold-dark); padding: 10px 20px; border-radius: 12px; font-weight: bold; text-shadow: 0 0 1px rgba(212,175,55,0.2);">
+                        ⏱️ 미션: 30초 동안 찬란하게 지켜내기
+                    </span>
+                </p>
+                <button class="btn" id="start-btn">쇼핑 시작하기</button>
+            </div>
+            
+            <div id="modal" class="panel">
+                <div id="result-emoji"></div>
+                <h2 id="result-title">TIME OVER!</h2>
+                <p id="result-desc" style="color:#555; font-size:16px; line-height:1.6; text-align: center; width: 100%;"></p>
+                
+                <div class="coupon-wrapper" id="coupon-box" style="display:none;">
+                    <div class="coupon-container">
+                        <div class="coupon-brand">HYUNDAI DUTY FREE</div>
+                        <div class="coupon-value" id="coupon-title">럭셔리 뷰티 15%</div>
+                        <div class="coupon-tag" id="coupon-category">BEAUTY ONLY</div>
+                    </div>
+                </div>
+                
+                <div style="display: flex; justify-content: center; width: 100%; margin-top:25px;">
+                    <button class="btn" id="cta-btn" style="display:none;" onclick="alert('쿠폰 발급 페이지로 연결됩니다.')">쿠폰 받기</button>
+                    <button class="btn btn-secondary" onclick="location.reload()">다시 도전</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. 공통 환경 변수 & 2D 파티클 세팅
+        // ==========================================
+        const videoElement = document.getElementById('video');
+        const particleCanvas = document.getElementById('canvas');
+        const particleCtx = particleCanvas.getContext('2d');
+        const threeCanvas = document.getElementById('three-canvas');
+
+        let trayWidth = 380; 
+        const trayThickness = 24; 
+        let isPlaying = false;
+        let timeLeft = 30; 
+        let baseHandAngle = 0; 
+        let cartAngle = 0;     
+        
+        let fallingItems = []; 
+        let trayItems = [];    
+        let particles = [];    
+        let lastTime = 0;
+
+        const itemRegistry = [
+            { icon: '💄', category: '뷰티', couponName: '럭셔리 뷰티 15%', tag: 'BEAUTY', weight: 1.0, color: '#ff6b81' },
+            { icon: '🧴', category: '향수', couponName: '니치 향수 $20', tag: 'PERFUME', weight: 1.2, color: '#7bed9f' },
+            { icon: '⌚', category: '워치', couponName: '워치/주얼리 $50', tag: 'WATCH', weight: 2.5, color: '#ced6e0' },
+            { icon: '🕶️', category: '패션', couponName: '트렌드 패션 10%', tag: 'FASHION', weight: 1.4, color: '#3742fa' },
+            { icon: '👜', category: '부티크', couponName: '부티크 $100', tag: 'BOUTIQUE', weight: 2.2, color: '#ff7f50' }
+        ];
+
+        // ==========================================
+        // 2. Three.js 3D 프리미엄 럭셔리 아케이드 환경 구축
+        // ==========================================
+        const scene = new THREE.Scene();
+        // 🌟 배경 그라데이션 및 원근감을 위해 PerspectiveCamera 사용
+        const cameraZ = 800;
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
+        camera.position.set(0, 0, cameraZ);
+
+        const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
+        
+        // 🌟 프리미엄 조명 세팅 (럭셔리 하이라이트 강화)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.85); /* 앰비언트 강화 */
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.1); /* 다이렉셔널 강화 */
+        directionalLight.position.set(100, 200, 300); /* 빛의 방향 */
+        directionalLight.castShadow = true; /* 그림자 생성 */
+        scene.add(directionalLight);
+
+        // 🌟 환경 매핑 (텍스처 없이 코드로 가상의 큐브맵 생성 - 금속/유리 하이라이트용)
+        const envCanvas = document.createElement('canvas');
+        envCanvas.width = envCanvas.height = 128;
+        const eCtx = envCanvas.getContext('2d');
+        eCtx.fillStyle = '#ffffff';
+        eCtx.beginPath(); eCtx.arc(64, 64, 30, 0, Math.PI * 2); eCtx.fill(); /* procedural cubemap */
+        eCtx.fillStyle = 'rgba(212,175,55,0.2)'; eCtx.fillRect(0,0,128,128); /* procedural gold cubemap */
+        const envTexture = new THREE.CanvasTexture(envCanvas);
+        envTexture.mapping = THREE.CubeReflectionMapping; /* 큐브 반사 매핑 */
+        envTexture.needsUpdate = true; /* 텍스처 업데이트 */
+
+        // 🌟 프리미엄 골드 트레이 메시 생성
+        const trayGeo = new THREE.BoxGeometry(1, 1, 1);
+        const trayMat = new THREE.MeshStandardMaterial({ 
+            color: 0xd4af37, 
+            metalness: 0.85, /* 금속성 강화 */
+            roughness: 0.15, /* 거칠기 완화 (블링블링) */
+            envMap: envTexture, /* 환경 반사 */
+            transparent: true,
+            opacity: 0.9 /* 미세하게 반투명 화이트 글래스 */
+        });
+        const trayMesh = new THREE.Mesh(trayGeo, trayMat);
+        scene.add(trayMesh);
+
+        function resizeCanvas() {
+            particleCanvas.width = window.innerWidth;
+            particleCanvas.height = window.innerHeight;
+            
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.fov = 2 * Math.atan(window.innerHeight / (2 * cameraZ)) * (180 / Math.PI);
+            camera.updateProjectionMatrix();
+
+            trayWidth = window.innerWidth * 0.95; 
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 🌟🌟🌟🌟🌟 핵심: 코인 대신 각 이모지별 프리미엄 3D 오브젝트 제작 (조명/재질 강화)
+        function create3DModel(category) {
+            const group = new THREE.Group();
+
+            if (category === '뷰티') { // 💄 립스틱
+                const baseGeo = new THREE.CylinderGeometry(10, 10, 25, 32);
+                const baseMat = new THREE.MeshStandardMaterial({ 
+                    color: 0xd4af37, metalness: 0.95, roughness: 0.05, envMap: envTexture 
+                });
+                const base = new THREE.Mesh(baseGeo, baseMat);
+                
+                const tipGeo = new THREE.CylinderGeometry(8, 8, 18, 32);
+                const tipMat = new THREE.MeshStandardMaterial({ 
+                    color: 0xff1e00, roughness: 0.2, emissive: 0xff3000, emissiveIntensity: 0.3 /* 아케이드 네온 */
+                });
+                const tip = new THREE.Mesh(tipGeo, tipMat);
+                tip.position.y = 20;
+                
+                group.add(base, tip);
+                group.scale.set(1.4, 1.4, 1.4);
+
+            } else if (category === '향수') { // 🧴 향수병 (유리 재질 강화)
+                const bodyGeo = new THREE.BoxGeometry(24, 30, 12);
+                const bodyMat = new THREE.MeshPhysicalMaterial({ 
+                    color: 0x47ff85, transmission: 0.8, opacity: 1, transparent: true, /* 유리 재질 */
+                    roughness: 0.05, metalness: 0.05, ior: 1.5, /* 굴절률 */
+                    clearcoat: 1.0, clearcoatRoughness: 0.05, /* 광택 */
+                    envMap: envTexture /* 환경 반사 */
+                });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                
+                const capGeo = new THREE.CylinderGeometry(6, 6, 10, 32);
+                const capMat = new THREE.MeshStandardMaterial({ 
+                    color: 0xcccccc, metalness: 1.0, roughness: 0.01, envMap: envTexture 
+                });
+                const cap = new THREE.Mesh(capGeo, capMat);
+                cap.position.y = 20;
+                
+                group.add(body, cap);
+                group.scale.set(1.2, 1.2, 1.2);
+
+            } else if (category === '워치') { // ⌚ 시계
+                const bandGeo = new THREE.TorusGeometry(15, 4, 16, 48);
+                const bandMat = new THREE.MeshStandardMaterial({ 
+                    color: 0xffd700, metalness: 1.0, roughness: 0.01, envMap: envTexture 
+                });
+                const band = new THREE.Mesh(bandGeo, bandMat);
+                
+                const faceGeo = new THREE.CylinderGeometry(14, 14, 6, 32);
+                const faceMat = new THREE.MeshStandardMaterial({ 
+                    color: 0x111111, metalness: 0.3, roughness: 0.8 
+                });
+                const face = new THREE.Mesh(faceGeo, faceMat);
+                face.rotation.x = Math.PI / 2;
+                
+                const coverGeo = new THREE.CylinderGeometry(13, 13, 1, 32);
+                const coverMat = new THREE.MeshPhysicalMaterial({ 
+                    color: 0xffffff, transmission: 0.9, transparent: true, roughness: 0.01,
+                    clearcoat: 1.0, clearcoatRoughness: 0.0 /* cover */
+                });
+                const cover = new THREE.Mesh(coverGeo, coverMat);
+                cover.position.y = 3.1;
+                face.add(cover);
+
+                group.add(band, face);
+                group.scale.set(1.1, 1.1, 1.1);
+
+            } else if (category === '패션') { // 🕶️ 선글라스 (렌즈 유리 강화)
+                const lensGeo = new THREE.CylinderGeometry(14, 14, 3, 32);
+                const lensMat = new THREE.MeshPhysicalMaterial({ 
+                    color: 0x000000, transmission: 0.3, opacity: 0.95, transparent: true,
+                    roughness: 0.0, ior: 1.4, clearcoat: 1.0, envMap: envTexture /* 선글라스 렌즈 */
+                });
+                
+                const lens1 = new THREE.Mesh(lensGeo, lensMat);
+                lens1.position.x = -15; lens1.rotation.x = Math.PI / 2;
+                
+                const lens2 = new THREE.Mesh(lensGeo, lensMat);
+                lens2.position.x = 15; lens2.rotation.x = Math.PI / 2;
+                
+                const bridgeGeo = new THREE.CylinderGeometry(2, 2, 10, 16);
+                const frameMat = new THREE.MeshStandardMaterial({ 
+                    color: 0xd4af37, metalness: 1.0, roughness: 0.0, envMap: envTexture 
+                });
+                const bridge = new THREE.Mesh(bridgeGeo, frameMat);
+                bridge.rotation.z = Math.PI / 2;
+                
+                group.add(lens1, lens2, bridge);
+                group.scale.set(1.4, 1.4, 1.4);
+
+            } else if (category === '부티크') { // 👜 명품백
+                const bagGeo = new THREE.BoxGeometry(32, 24, 16);
+                const bagMat = new THREE.MeshStandardMaterial({ 
+                    color: 0xc97545, roughness: 0.5, metalness: 0.05 
+                });
+                const bag = new THREE.Mesh(bagGeo, bagMat);
+                
+                const handleGeo = new THREE.TorusGeometry(10, 2, 16, 32, Math.PI);
+                const handleMat = new THREE.MeshStandardMaterial({ 
+                    color: 0xd4af37, roughness: 0.0, metalness: 1.0, envMap: envTexture /* handle */
+                });
+                const handle = new THREE.Mesh(handleGeo, handleMat);
+                handle.position.y = 12;
+                
+                const logoGeo = new THREE.TorusGeometry(3, 0.8, 16, 32, Math.PI*2);
+                const logoMat = new THREE.MeshStandardMaterial({ 
+                    color: 0xd4af37, roughness: 0.0, metalness: 1.0, envMap: envTexture 
+                });
+                const logo = new THREE.Mesh(logoGeo, logoMat);
+                logo.position.set(0, 0, 8.1);
+                bag.add(logo);
+
+                group.add(bag, handle);
+                group.scale.set(1.3, 1.3, 1.3);
+            }
+
+            scene.add(group);
+            return group;
+        }
+
+        // 사용이 끝난 3D 오브젝트 메모리 해제
+        function disposeMesh(meshGroup) {
+            scene.remove(meshGroup);
+            meshGroup.children.forEach(child => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (child.material.map) child.material.map.dispose();
+                    child.material.dispose();
+                }
+            });
+        }
+
+        // 🌟 찬란하게 빛나는 고급 골드 파티클 생성 함수
+        function createParticles(x, y, color, count = 18) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = (3 + Math.random() * 6);
+                particles.push({
+                    x: x, y: y,
+                    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 2,
+                    size: 4 + Math.random() * 6, /* 더 크고 찬란하게 */
+                    color: color, 
+                    alpha: 1, 
+                    life: 1,
+                    decay: 0.03 + Math.random() * 0.02
+                });
+            }
+        }
+
+        // ==========================================
+        // 3. 메인 게임 로직 (물리 엔진 & 민감도)
+        // ==========================================
+        function spawnItem() {
+            if(!isPlaying) return;
+            const t = itemRegistry[Math.floor(Math.random() * itemRegistry.length)];
+            const spawnX = Math.random() * (window.innerWidth * 0.8) + (window.innerWidth * 0.1);
+            
+            fallingItems.push({
+                x: spawnX, y: -60, radius: 28,
+                vx: (Math.random() - 0.5) * 1.5, 
+                vy: 2.0 + Math.random() * 2.0, 
+                mesh: create3DModel(t.category), // 이모지 대신 3D 오브젝트 생성
+                ...t
+            });
+            const spawnRate = timeLeft > 15 ? (800 + Math.random() * 300) : (400 + Math.random() * 300);
+            setTimeout(spawnItem, spawnRate);
+        }
+
+        function gameLoop(timestamp) {
+            if(!isPlaying) return;
+            
+            if(!lastTime) lastTime = timestamp;
+            const dt = (timestamp - lastTime) / 16.66; 
+            lastTime = timestamp;
+
+            particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+
+            let totalTorque = 0;
+            for (let i = 0; i < trayItems.length; i++) {
+                totalTorque += trayItems[i].localX * trayItems[i].weight;
+            }
+            
+            // 🌟 민감도 상향 적용 유지 (0.069)
+            let weightAngleOffset = (totalTorque / trayWidth) * 0.069; 
+            let targetAngle = baseHandAngle + weightAngleOffset;
+            
+            // 🌟 민감도 상향 적용 유지 (0.092)
+            cartAngle += (targetAngle - cartAngle) * 0.092 * dt; 
+
+            const cartX = window.innerWidth / 2;
+            const cartY = window.innerHeight - 250;
+            
+            trayMesh.scale.set(trayWidth, trayThickness, 100);
+            trayMesh.position.x = cartX - window.innerWidth / 2;
+            trayMesh.position.y = -(cartY - window.innerHeight / 2);
+            trayMesh.rotation.z = -cartAngle;
+
+            for (let i = trayItems.length - 1; i >= 0; i--) {
+                let tItem = trayItems[i];
+                let gravityX = 0.8 * Math.sin(cartAngle) * dt; 
+                tItem.vx += gravityX;
+                tItem.vx *= 0.92; 
+                tItem.localX += tItem.vx * dt;
+
+                if (Math.abs(tItem.localX) > (trayWidth / 2) - tItem.radius/2) {
+                    let globalX = cartX + tItem.localX * Math.cos(cartAngle) - (-20) * Math.sin(cartAngle);
+                    let globalY = cartY + tItem.localX * Math.sin(cartAngle) + (-20) * Math.cos(cartAngle);
+                    
+                    fallingItems.push({
+                        ...tItem,
+                        x: globalX, y: globalY,
+                        vx: tItem.vx * Math.cos(cartAngle),
+                        vy: Math.abs(tItem.vx * Math.sin(cartAngle)) + 2.0
+                    });
+                    createParticles(globalX, globalY, '#a0aec0', 10);
+                    trayItems.splice(i, 1);
+                    continue;
+                }
+                
+                let targetLocalY = -trayThickness/2 - tItem.radius + 5;
+                let globalX = cartX + tItem.localX * Math.cos(cartAngle) - targetLocalY * Math.sin(cartAngle);
+                let globalY = cartY + tItem.localX * Math.sin(cartAngle) + targetLocalY * Math.cos(cartAngle);
+                
+                tItem.mesh.position.x = globalX - window.innerWidth / 2;
+                tItem.mesh.position.y = -(globalY - window.innerHeight / 2);
+                tItem.mesh.rotation.z = -cartAngle; 
+                tItem.mesh.rotation.x = 0; 
+                tItem.mesh.rotation.y = 0;
+            }
+
+            for (let i = fallingItems.length - 1; i >= 0; i--) {
+                let fItem = fallingItems[i];
+                fItem.vy += 0.15 * dt; 
+                fItem.x += fItem.vx * dt;
+                fItem.y += fItem.vy * dt;
+
+                let dx = fItem.x - cartX;
+                let dy = fItem.y - cartY;
+                let localX = dx * Math.cos(-cartAngle) - dy * Math.sin(-cartAngle);
+                let localY = dx * Math.sin(-cartAngle) + dy * Math.cos(-cartAngle);
+
+                if (localY > -trayThickness/2 - fItem.radius && localY < 0 && Math.abs(localX) < (trayWidth / 2)) {
+                    trayItems.push({
+                        ...fItem,
+                        localX: localX,
+                        vx: fItem.vx * Math.cos(-cartAngle) * 0.4 
+                    });
+                    // 충돌 시 블링블링 골드 파티클
+                    createParticles(fItem.x, fItem.y, '#ffd700', 25);
+                    fallingItems.splice(i, 1);
+                    continue;
+                }
+
+                fItem.mesh.position.x = fItem.x - window.innerWidth / 2;
+                fItem.mesh.position.y = -(fItem.y - window.innerHeight / 2);
+                fItem.mesh.rotation.x += 0.05 * dt;
+                fItem.mesh.rotation.y += 0.08 * dt;
+
+                if (fItem.y > window.innerHeight + 100) {
+                    disposeMesh(fItem.mesh);
+                    fallingItems.splice(i, 1);
+                }
+            }
+            
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.alpha -= p.decay * dt; /* dt 적용 */
+                if (p.alpha <= 0) { particles.splice(i, 1); continue; }
+                
+                particleCtx.globalAlpha = p.alpha;
+                // 🌟 찬란하게 빛나는 파티클 (네온 글로우 간접 구현)
+                particleCtx.fillStyle = p.color;
+                particleCtx.beginPath();
+                particleCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                particleCtx.fill();
+                particleCtx.shadowBlur = 0; /* 섀도우 효과 */
+            }
+            particleCtx.globalAlpha = 1.0;
+            
+            document.getElementById('score-display').innerText = trayItems.length;
+
+            renderer.render(scene, camera);
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ==========================================
+        // 4. 타이머 및 게임 상태 컨트롤 (결과 화면 디자인 변경)
+        // ==========================================
+        function startTimer() {
+            const timer = setInterval(() => {
+                if(!isPlaying) { clearInterval(timer); return; }
+                timeLeft--;
+                document.getElementById('time-display').innerText = timeLeft;
+                if(timeLeft <= 0) {
+                    clearInterval(timer);
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            isPlaying = false;
+            document.getElementById('overlay').style.display = 'flex';
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('modal').style.display = 'flex';
+            
+            if (trayItems.length > 0) {
+                const counts = {};
+                trayItems.forEach(item => counts[item.category] = (counts[item.category] || 0) + 1);
+                let favorite = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+                const reward = itemRegistry.find(r => r.category === favorite);
+
+                // 🌟 SUCCESS! 프리미엄 팡파르 효과
+                document.getElementById('result-title').innerHTML = "<span style='color:var(--gold-main); text-shadow: 0 0 15px rgba(212,175,55,1), 0 0 5px rgba(0,0,0,0.1);'>ARCADE CLEAR!</span>";
+                document.getElementById('result-emoji').innerText = reward.icon;
+                
+                document.getElementById('result-desc').innerHTML = 
+                    `30초 동안 찬란하게 빛나는 명품 <b style="color:var(--gold-dark); font-size:20px; text-shadow:0 0 1px rgba(212,175,55,0.3);">${trayItems.length}개</b>를 지켰습니다.<br>` +
+                    `고객님의 프리미엄 초이스는 <b style="color:#000;">[${favorite}]</b> 이군요!<br>맞춤형 스페셜 혜택을 확인해 보세요.`;
+                
+                document.getElementById('coupon-title').innerText = reward.couponName;
+                document.getElementById('coupon-category').innerText = reward.tag + " ONLY";
+                
+                document.getElementById('coupon-box').style.display = 'flex';
+                document.getElementById('cta-btn').style.display = 'inline-block';
+                
+                // 찬란한 프리미엄 파티클 팡파르
+                for(let k=0; k<12; k++) {
+                    setTimeout(() => createParticles(window.innerWidth/2 + (Math.random()-0.5)*400, window.innerHeight/2, '#ffd700', 40), k*120);
+                }
+            } else {
+                // 🌟 GAME OVER 밝은 핑크 네온 피드백
+                document.getElementById('result-title').innerHTML = "<span style='color:#ff007f; text-shadow: 0 0 15px rgba(255,0,127,1), 0 0 5px rgba(0,0,0,0.1);'>ARCADE OVER</span>";
+                document.getElementById('result-emoji').innerText = '😢';
+                document.getElementById('result-desc').innerHTML = `아쉽게도 명품을 지키지 못했습니다.<br>조금만 더 찬란하게 수평을 맞춰보세요!`;
+                document.getElementById('coupon-box').style.display = 'none';
+                document.getElementById('cta-btn').style.display = 'none';
+            }
+        }
+
+        // ==========================================
+        // 5. MediaPipe 핸드 트래킹 세팅
+        // ==========================================
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({
+            maxNumHands: 2, modelComplexity: 1,
+            minDetectionConfidence: 0.6, minTrackingConfidence: 0.6
+        });
+
+        hands.onResults((results) => {
+            if(!isPlaying) return;
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {
+                const hand1 = results.multiHandLandmarks[0][0]; 
+                const hand2 = results.multiHandLandmarks[1][0]; 
+                
+                const leftHand = hand1.x > hand2.x ? hand1 : hand2;
+                const rightHand = hand1.x > hand2.x ? hand2 : hand1;
+                
+                const dy = rightHand.y - leftHand.y;
+                const dx = leftHand.x - rightHand.x; 
+                // 🌟 민감도 상향 계수 유지 (1.265)
+                baseHandAngle = Math.atan2(dy, dx) * 1.265; 
+            } else {
+                baseHandAngle *= 0.9; 
+            }
+        });
+
+        const cameraFeed = new Camera(videoElement, {
+            onFrame: async () => { if(isPlaying) await hands.send({image: videoElement}); },
+            width: 640, height: 480
+        });
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('start-btn').innerText = "카메라 로딩중...";
+            cameraFeed.start().then(() => {
+                document.getElementById('overlay').style.display = 'none';
+                
+                fallingItems.forEach(item => disposeMesh(item.mesh));
+                trayItems.forEach(item => disposeMesh(item.mesh));
+
+                isPlaying = true;
+                timeLeft = 30; 
+                baseHandAngle = 0; cartAngle = 0; lastTime = performance.now();
+                fallingItems = []; trayItems = []; particles = [];
+                
+                document.getElementById('score-display').innerText = '0';
+                document.getElementById('time-display').innerText = timeLeft;
+                
+                startTimer(); spawnItem();
+                requestAnimationFrame(gameLoop);
+            }).catch((err) => {
+                alert("웹캠 권한을 허용해주세요!");
+                document.getElementById('start-btn').innerText = "쇼핑 시작하기";
+            });
+        });
+    </script>
+</body>
+</html>
