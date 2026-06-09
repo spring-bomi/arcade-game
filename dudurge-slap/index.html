@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whack-a-Mole: Motion Arcade</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Black+Han+Sans&display=swap');
+
+        :root {
+            --fever-color: #ff3300;
+        }
+
+        body {
+            margin: 0; padding: 0;
+            background-color: #1a1a2e;
+            color: #fff;
+            font-family: 'Black Han Sans', sans-serif;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100vh; overflow: hidden;
+            user-select: none;
+            transition: box-shadow 0.3s;
+        }
+
+        /* 피버 타임 화면 테두리 효과 */
+        body.fever {
+            box-shadow: inset 0 0 50px var(--fever-color), inset 0 0 100px #ffcc00;
+        }
+
+        /* 화면 흔들림 효과 */
+        @keyframes shake {
+            0% { transform: translate(2px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(0px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(2px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(2px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+        .shake-small { animation: shake 0.2s; }
+        .shake-large { animation: shake 0.5s; background-color: rgba(255, 0, 0, 0.3); }
+
+        #webcam {
+            position: absolute; top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            object-fit: cover; z-index: -1;
+            transform: scaleX(-1); opacity: 0.4;
+        }
+
+        h1 {
+            color: #ffcc00;
+            font-family: 'Press Start 2P', cursive;
+            text-shadow: 4px 4px 0px #e60000;
+            margin-bottom: 5px; font-size: 2rem; z-index: 1;
+            letter-spacing: -2px;
+        }
+
+        .header-info {
+            display: flex; justify-content: space-between;
+            width: 450px; margin-bottom: 20px; z-index: 1;
+            font-family: 'Press Start 2P', cursive; font-size: 0.8rem;
+        }
+        .header-info span { color: #00ffcc; }
+
+        .status-board {
+            display: flex; justify-content: space-between; align-items: center;
+            width: 450px; margin-bottom: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px; border-radius: 10px;
+            border: 4px solid #444; z-index: 1;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+
+        .time { font-size: 2rem; color: #fff; }
+        .score { font-size: 2.5rem; color: #ffcc00; }
+        .combo { font-size: 1.5rem; color: #ff3366; font-style: italic; display: none; }
+
+        #grid {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 20px; width: 450px; height: 450px; z-index: 1;
+        }
+
+        /* 흙구멍 디자인 */
+        .hole {
+            background-color: #3e2723;
+            border-radius: 50% / 30%;
+            border: 5px solid #27140f;
+            border-bottom: 15px solid #1a0d0a;
+            position: relative; overflow: hidden;
+        }
+
+        /* 두더지 공통 속성 */
+        .mole {
+            position: absolute;
+            bottom: -100%; left: 50%;
+            transform: translateX(-50%);
+            font-size: 5rem; line-height: 1;
+            transition: bottom 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* 튀어오르는 느낌 */
+            pointer-events: none;
+        }
+
+        .hole.active .mole { bottom: 10%; } /* 두더지 올라옴 */
+        .hole.hit .mole { bottom: -20%; opacity: 0.5; filter: grayscale(100%); transition: bottom 0.1s; }
+
+        /* 손 포인터 */
+        .hand-pointer {
+            position: absolute;
+            width: 50px; height: 50px;
+            background: radial-gradient(circle, rgba(0,255,204,0.8) 0%, rgba(0,102,255,0) 70%);
+            border-radius: 50%; pointer-events: none;
+            transform: translate(-50%, -50%);
+            z-index: 5; display: none;
+        }
+
+        /* 박수 칠 때 나오는 뿅망치 */
+        #hammer {
+            position: absolute; font-size: 6rem;
+            pointer-events: none; transform: translate(-50%, -50%) rotate(-45deg);
+            z-index: 10; display: none;
+            text-shadow: 0 0 20px #fff;
+        }
+
+        /* 플로팅 텍스트 (점수 표시) */
+        .floating-text {
+            position: absolute;
+            font-size: 2rem; font-weight: bold;
+            pointer-events: none; z-index: 15;
+            animation: floatUp 0.8s ease-out forwards;
+        }
+
+        @keyframes floatUp {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -150%) scale(1.5); opacity: 0; }
+        }
+
+        /* 오버레이 (아케이드 감성) */
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 20;
+        }
+
+        #overlay h2 { font-family: 'Press Start 2P', cursive; font-size: 3rem; color: #ffcc00; margin-bottom: 20px; text-align: center; line-height: 1.2;}
+        #overlay p { font-size: 1.5rem; color: #ccc; margin-bottom: 40px; text-align: center; }
+        
+        /* 반짝이는 텍스트 효과 */
+        .blink { animation: blinker 1s linear infinite; }
+        @keyframes blinker { 50% { opacity: 0; } }
+
+        button {
+            padding: 15px 40px; font-size: 1.5rem; font-family: 'Press Start 2P', cursive;
+            color: #111; background-color: #00ffcc; border: 4px solid #fff;
+            cursor: pointer; transition: transform 0.1s;
+        }
+        button:active { transform: scale(0.9); }
+        button:disabled { background-color: #555; border-color: #333; }
+    </style>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <video id="webcam" autoplay playsinline></video>
+
+    <div id="hand-pointer-1" class="hand-pointer"></div>
+    <div id="hand-pointer-2" class="hand-pointer"></div>
+    <div id="hammer">🔨</div>
+
+    <h1>WHACK-A-MOLE</h1>
+    <div class="header-info">
+        <div>HI-SCORE: <span id="hiScoreDisplay">0</span></div>
+    </div>
+    
+    <div class="status-board">
+        <div class="time"><span id="timeDisplay">30</span>"</div>
+        <div class="score"><span id="scoreDisplay">0</span></div>
+        <div class="combo" id="comboDisplay">2 COMBO!</div>
+    </div>
+
+    <div id="grid">
+        <div class="hole" data-index="0"><div class="mole">🐹</div></div>
+        <div class="hole" data-index="1"><div class="mole">🐹</div></div>
+        <div class="hole" data-index="2"><div class="mole">🐹</div></div>
+        <div class="hole" data-index="3"><div class="mole">🐹</div></div>
+        <div class="hole" data-index="4"><div class="mole">🐹</div></div>
+        <div class="hole" data-index="5"><div class="mole">🐹</div></div>
+        <div class="hole" data-index="6"><div class="mole">🐹</div></div>
+        <div class="hole" data-index="7"><div class="mole">🐹</div></div>
+        <div class="hole" data-index="8"><div class="mole">🐹</div></div>
+    </div>
+
+    <div id="overlay">
+        <h2 id="overlayTitle">LOADING...</h2>
+        <p id="overlayDesc">양 손을 인식중입니다.</p>
+        <button id="startBtn" disabled class="blink">INSERT COIN</button>
+    </div>
+
+    <script>
+        // DOM 요소
+        const videoElement = document.getElementById('webcam');
+        const pointer1 = document.getElementById('hand-pointer-1');
+        const pointer2 = document.getElementById('hand-pointer-2');
+        const hammer = document.getElementById('hammer');
+        const holes = document.querySelectorAll('.hole');
+        
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const comboDisplay = document.getElementById('comboDisplay');
+        const hiScoreDisplay = document.getElementById('hiScoreDisplay');
+        
+        const overlay = document.getElementById('overlay');
+        const overlayTitle = document.getElementById('overlayTitle');
+        const overlayDesc = document.getElementById('overlayDesc');
+        const startBtn = document.getElementById('startBtn');
+
+        // 게임 변수
+        let score = 0, timeLeft = 30, combo = 0;
+        let isPlaying = false, gameTimer, spawnTimer;
+        let isFever = false;
+        
+        // 최고 점수 불러오기
+        let hiScore = localStorage.getItem('whackHiScore') || 0;
+        hiScoreDisplay.textContent = hiScore;
+
+        // 모션 인식 변수
+        let cameraReady = false;
+        const clapThreshold = 0.08; 
+        let isClapping = false, previousClappingState = false; 
+
+        // --- 사운드 엔진 (Web Audio API) ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+            
+            if (type === 'hit') { // 일반 타격음 (뿅!)
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'golden') { // 황금 두더지 (띠링!)
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.setValueAtTime(1200, now + 0.1);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'bomb') { // 폭탄 (퍼벙!)
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(10, now + 0.3);
+                gain.gain.setValueAtTime(0.8, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'over') { // 게임 오버 (띠로롱~)
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.5);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now); osc.stop(now + 0.5);
+            }
+        }
+
+        // --- 플로팅 텍스트 이펙트 ---
+        function showFloatingText(x, y, text, color) {
+            const el = document.createElement('div');
+            el.className = 'floating-text';
+            el.textContent = text;
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+            el.style.color = color;
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 800);
+        }
+
+        // --- 게임 로직 ---
+        function spawnMole() {
+            if (!isPlaying) return;
+
+            // 난이도 조절: 남은 시간에 따라 출현 빈도와 유지 시간 단축
+            const difficultyMultiplier = Math.max(0.4, timeLeft / 30);
+            const activeTime = 600 + (Math.random() * 800 * difficultyMultiplier);
+            const nextSpawnTime = 300 + (Math.random() * 600 * difficultyMultiplier);
+
+            // 빈 구멍 찾기
+            const emptyHoles = Array.from(holes).filter(h => !h.classList.contains('active'));
+            if (emptyHoles.length > 0) {
+                // 확률: 일반 70%, 황금 15%, 폭탄 15%
+                const hole = emptyHoles[Math.floor(Math.random() * emptyHoles.length)];
+                const moleEl = hole.querySelector('.mole');
+                const rand = Math.random();
+                
+                let moleType = 'normal';
+                if (rand > 0.85) { moleType = 'bomb'; moleEl.textContent = '💣'; }
+                else if (rand > 0.7) { moleType = 'golden'; moleEl.textContent = '👑'; }
+                else { moleType = 'normal'; moleEl.textContent = '🐹'; }
+
+                hole.dataset.type = moleType;
+                hole.classList.add('active');
+                hole.classList.remove('hit');
+
+                // 일정 시간 후 숨기기
+                setTimeout(() => {
+                    if (hole.classList.contains('active')) {
+                        hole.classList.remove('active');
+                        // 폭탄이 아닌 타겟을 놓치면 콤보 초기화
+                        if (moleType !== 'bomb' && isPlaying) resetCombo();
+                    }
+                }, activeTime);
+            }
+            spawnTimer = setTimeout(spawnMole, nextSpawnTime);
+        }
+
+        function handleHit(hole, x, y) {
+            if (!hole.classList.contains('active')) return;
+            
+            hole.classList.remove('active');
+            hole.classList.add('hit'); // 얻어맞은 이펙트
+
+            const type = hole.dataset.type;
+            let points = 0;
+            let multiplier = isFever ? 2 : 1;
+
+            if (type === 'normal') {
+                points = 10 * multiplier;
+                playSound('hit');
+                showFloatingText(x, y, `+${points}`, '#00ffcc');
+                addCombo();
+                document.body.classList.add('shake-small');
+                setTimeout(() => document.body.classList.remove('shake-small'), 200);
+            } 
+            else if (type === 'golden') {
+                points = 50 * multiplier;
+                playSound('golden');
+                showFloatingText(x, y, `+${points}!`, '#ffcc00');
+                addCombo();
+            } 
+            else if (type === 'bomb') {
+                points = -20;
+                playSound('bomb');
+                showFloatingText(x, y, `OUCH! -20`, '#ff0000');
+                resetCombo();
+                document.body.classList.add('shake-large');
+                setTimeout(() => document.body.classList.remove('shake-large'), 500);
+            }
+
+            score = Math.max(0, score + points);
+            scoreDisplay.textContent = score;
+        }
+
+        function addCombo() {
+            combo++;
+            if (combo >= 3) {
+                comboDisplay.style.display = 'block';
+                comboDisplay.textContent = `${combo} COMBO!`;
+                // 피버 타임 발동 (5콤보 이상)
+                if (combo >= 5 && !isFever) {
+                    isFever = true;
+                    document.body.classList.add('fever');
+                    playSound('golden');
+                }
+            }
+        }
+
+        function resetCombo() {
+            combo = 0;
+            comboDisplay.style.display = 'none';
+            isFever = false;
+            document.body.classList.remove('fever');
+        }
+
+        function startGame() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            score = 0; timeLeft = 30; combo = 0; isPlaying = true;
+            scoreDisplay.textContent = score; 
+            timeDisplay.textContent = timeLeft;
+            resetCombo();
+            holes.forEach(h => h.classList.remove('active', 'hit'));
+            overlay.style.display = 'none';
+            
+            spawnMole(); // 두더지 생성 시작
+
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                timeDisplay.textContent = timeLeft;
+                if (timeLeft <= 0) endGame();
+            }, 1000);
+        }
+
+        function endGame() {
+            isPlaying = false; 
+            clearInterval(gameTimer); clearTimeout(spawnTimer);
+            holes.forEach(h => h.classList.remove('active', 'hit'));
+            resetCombo();
+            playSound('over');
+            
+            // 최고 점수 갱신
+            if (score > hiScore) {
+                hiScore = score;
+                localStorage.setItem('whackHiScore', hiScore);
+                hiScoreDisplay.textContent = hiScore;
+                overlayTitle.textContent = "NEW RECORD!";
+            } else {
+                overlayTitle.textContent = "GAME OVER";
+            }
+            
+            overlayTitle.style.color = "#ff3300";
+            overlayDesc.innerHTML = `SCORE: <strong style="color:#ffcc00;">${score}</strong><br>다시 도전하시겠습니까?`;
+            startBtn.textContent = "INSERT COIN";
+            overlay.style.display = 'flex';
+        }
+
+        startBtn.addEventListener('click', startGame);
+
+        // --- MediaPipe 모션 인식 로직 ---
+        function onResults(results) {
+            if (!cameraReady) {
+                cameraReady = true;
+                overlayTitle.textContent = "READY PLAYER 1";
+                overlayTitle.style.color = "#00ffcc";
+                overlayDesc.innerHTML = "구멍 위에서 양 손을 마주쳐(Clap)<br>망치로 두더지를 잡으세요!<br>폭탄(💣)은 조심하세요!";
+                startBtn.textContent = "INSERT COIN";
+                startBtn.disabled = false;
+            }
+
+            isClapping = false;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand1 = results.multiHandLandmarks[0][9];
+                const x1 = (1 - hand1.x) * window.innerWidth;
+                const y1 = hand1.y * window.innerHeight;
+                
+                pointer1.style.display = 'block';
+                pointer1.style.left = `${x1}px`; pointer1.style.top = `${y1}px`;
+
+                if (results.multiHandLandmarks.length === 2) {
+                    const hand2 = results.multiHandLandmarks[1][9];
+                    const x2 = (1 - hand2.x) * window.innerWidth;
+                    const y2 = hand2.y * window.innerHeight;
+                    
+                    pointer2.style.display = 'block';
+                    pointer2.style.left = `${x2}px`; pointer2.style.top = `${y2}px`;
+
+                    const distance = Math.sqrt(Math.pow(hand1.x - hand2.x, 2) + Math.pow(hand1.y - hand2.y, 2));
+
+                    if (distance < clapThreshold) {
+                        isClapping = true;
+                        // 박수 치는 순간 망치 이펙트 표시
+                        const midX = (x1 + x2) / 2;
+                        const midY = (y1 + y2) / 2;
+                        pointer1.style.display = 'none';
+                        pointer2.style.display = 'none';
+                        hammer.style.display = 'block';
+                        hammer.style.left = `${midX}px`;
+                        hammer.style.top = `${midY}px`;
+
+                        // 타격 판정
+                        if (isPlaying && !previousClappingState) {
+                            holes.forEach(hole => {
+                                const rect = hole.getBoundingClientRect();
+                                if (midX >= rect.left && midX <= rect.right && midY >= rect.top && midY <= rect.bottom) {
+                                    handleHit(hole, midX, midY);
+                                }
+                            });
+                        }
+                    } else {
+                        hammer.style.display = 'none';
+                    }
+                } else {
+                    pointer2.style.display = 'none';
+                    hammer.style.display = 'none';
+                }
+                previousClappingState = isClapping;
+            } else {
+                pointer1.style.display = 'none'; pointer2.style.display = 'none'; hammer.style.display = 'none';
+                previousClappingState = false;
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 640, height: 480
+        });
+        camera.start();
+    </script>
+</body>
+</html>
