@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>모바일 세로형 클래식 테니스 (TENNIS RALLY 3D)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0; padding: 0;
+            background-color: #151912; /* 짙은 잔디색 배경 */
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; overflow: hidden;
+            font-family: 'Impact', 'Malgun Gothic', sans-serif;
+        }
+
+        /* [변경] 모바일 및 세로형 키오스크 최적화 9:16 비율 종방향 프레임 */
+        #game-container {
+            position: relative;
+            width: 506px; 
+            height: 900px;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.7);
+            border-radius: 20px;
+            overflow: hidden;
+            border: 10px solid #3e2723; /* 클래식 원목 프레임 마감 */
+        }
+
+        canvas {
+            display: block; width: 100%; height: 100%;
+            position: absolute; top: 0; left: 0; z-index: 2;
+        }
+
+        /* 비디오 작동 차단 우회 스텔스 디자인 */
+        #webcam { 
+            position: absolute;
+            opacity: 0; pointer-events: none;
+            width: 1px; height: 1px;
+        }
+
+        /* 세로형 스포츠 HUD 전광판 */
+        .ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 5;
+            padding: 30px; box-sizing: border-box;
+            color: #fff; text-shadow: 2px 2px 2px rgba(0,0,0,0.8);
+        }
+        .ui-header { display: flex; justify-content: space-between; font-size: 28px; font-weight: 900; }
+        .rally-box { color: #f1c40f; } 
+        .life-box { color: #e74c3c; letter-spacing: 2px; }
+
+        .guide-text { 
+            position: absolute; bottom: 40px; left: 5%; width: 90%; 
+            text-align: center; font-size: 17px; color: #fff; font-weight: bold;
+            background: rgba(62, 39, 35, 0.85); border: 2px solid #5d4037; border-radius: 10px;
+            padding: 12px 0; font-family: sans-serif; text-shadow: none;
+        }
+
+        /* 아케이드 스타일 오버레이 스크린 */
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #fdfbf7;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 10; gap: 20px; padding: 40px; box-sizing: border-box; text-align: center;
+            border: 4px solid #3e2723;
+        }
+        .overlay h1 { font-size: 42px; margin: 0; color: #3e2723; -webkit-text-stroke: 1.5px #fff; letter-spacing: -1px; }
+        .overlay p { font-size: 19px; color: #5d4037; font-family: sans-serif; font-weight: bold; line-height: 1.7; margin: 0; }
+        
+        .btn {
+            padding: 14px 50px; font-size: 24px; font-weight: bold;
+            background-color: #ff9100; border: 4px solid #3e2723; border-radius: 15px;
+            color: white; cursor: pointer; pointer-events: auto;
+            box-shadow: 0 8px 0 #b36200;
+            transition: all 0.1s;
+        }
+        .btn:active { transform: translateY(6px); box-shadow: 0 2px 0 #b36200; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="gameCanvas" width="506" height="900"></canvas>
+
+        <div class="ui-layer">
+            <div class="ui-header">
+                <div class="rally-box">RALLY: <span id="rally-count" style="color:#fff;">0</span></div>
+                <div class="life-box"><span id="life-text">♥♥♥</span></div>
+            </div>
+            <div class="guide-text" id="guide">화면 하단 내 코트 구역에서 라켓을 휘둘러 랠리를 이어가세요!</div>
+        </div>
+
+        <div id="screen-loading" class="overlay">
+            <h1>센서 영점 조절 중</h1>
+            <p>모션 트래킹 모듈을 불러오고 있습니다.<br>카메라 권한을 수락해 주세요.</p>
+        </div>
+
+        <div id="screen-start" class="overlay hidden">
+            <h1>VERTICAL RALLY</h1>
+            <p>모바일 최적화 세로형 테니스 게임입니다.<br><br>내 코트(화면 아래쪽) 범위 내에서 손을 편 채 움직여 공을 강하게 받아쳐 위로 올리세요!</p>
+            <button class="btn" onclick="startGame()">MATCH START</button>
+        </div>
+
+        <div id="screen-result" class="overlay hidden">
+            <h1>MATCH SET</h1>
+            <p style="font-size: 24px; color: #3e2723; margin-bottom: 10px;">최종 랠리 달성: <span id="final-rally" style="color:#d84315; font-weight:bold;">0</span> 회</p>
+            <button class="btn" onclick="startGame()">REMATCH</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('webcam');
+        const guideEl = document.getElementById('guide');
+
+        let gameState = 'LOADING';
+        let rallyCount = 0;
+        let lives = 3;
+
+        // 세로 공간(506x900)에 맞게 물리 매트릭스 재좌표화
+        let ball = { x: 253, y: 200, vx: 3, vy: 5, radius: 14, speedMax: 18 };
+        let racket = { x: 253, y: 720, vx: 0, vy: 0, radius: 46 };
+
+        let particles = [];
+        let camera = { shake: 0 };
+        let handPointer = { x: 253, y: 720, active: false };
+
+        // --- 1. MediaPipe Hands 모션 인식 설정 ---
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+        hands.onResults(onHandResults);
+
+        navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 640 } })
+        .then((stream) => {
+            videoElement.srcObject = stream;
+            const cameraObj = new Camera(videoElement, { onFrame: async () => { await hands.send({ image: videoElement }); }, width: 480, height: 640 });
+            cameraObj.start();
+            showOverlay('START');
+        })
+        .catch((err) => {
+            console.warn("웹캠 인식 제외: 터치 및 마우스 단독 연동 모드로 즉시 전환합니다.", err);
+            showOverlay('START');
+        });
+
+        function onHandResults(results) {
+            if (gameState !== 'PLAYING') return;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                handPointer.active = true;
+
+                let tx = (1 - landmarks[9].x) * canvas.width;
+                let ty = landmarks[9].y * canvas.height;
+
+                handPointer.x += (tx - handPointer.x) * 0.75;
+                
+                // [조율] 테니스의 현실감을 위해 가상 라켓 이동 범위를 하단 코트(Y축 네트 아래) 내부로 클램핑 처리
+                handPointer.y += (Math.max(480, Math.min(840, ty)) - handPointer.y) * 0.75;
+            } else {
+                handPointer.active = false;
+            }
+        }
+
+        // 터치 및 마우스 하이브리드 인터페이스 연동
+        canvas.addEventListener('mousemove', (e) => {
+            if (handPointer.active || gameState !== 'PLAYING') return;
+            const rect = canvas.getBoundingClientRect();
+            handPointer.x = e.clientX - rect.left;
+            // 마우스 연산 시에도 네트 위로 라켓이 넘어가지 않도록 아래 구역 고정
+            handPointer.y = Math.max(480, Math.min(840, e.clientY - rect.top));
+        });
+
+        // 모바일 스크린 터치 드래그 연동 완벽 탑재
+        canvas.addEventListener('touchmove', (e) => {
+            if (handPointer.active || gameState !== 'PLAYING') return;
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            handPointer.x = touch.clientX - rect.left;
+            handPointer.y = Math.max(480, Math.min(840, touch.clientY - rect.top));
+            e.preventDefault();
+        }, { passive: false });
+
+        // --- 2. 클래식 파편 파티클 제너레이터 ---
+        function createImpactParticles(x, y, count) {
+            for (let i = 0; i < count; i++) {
+                let angle = Math.random() * Math.PI * 2;
+                let speed = Math.random() * 5 + 2;
+                particles.push({
+                    x: x, y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 3, // 세로형이므로 위쪽(음수 vy)으로 넓게 솟구침 유도
+                    radius: Math.random() * 3 + 2,
+                    alpha: 1,
+                    color: Math.random() < 0.6 ? '#f4d03f' : '#ffffff' 
+                });
+            }
+        }
+
+        // --- 3. 세로형 랠리 물리 코어 시뮬레이션 ---
+        function updateGamePhysics() {
+            racket.vx = handPointer.x - racket.x;
+            racket.vy = handPointer.y - racket.y;
+            racket.x = handPointer.x;
+            racket.y = handPointer.y;
+
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+
+            // 세로형 좌우 벽면 튕김 처리
+            if (ball.x - ball.radius < 0) { ball.x = ball.radius; ball.vx *= -1; camera.shake = 1.5; }
+            if (ball.x + ball.radius > canvas.width) { ball.x = canvas.width - ball.radius; ball.vx *= -1; camera.shake = 1.5; }
+            
+            // 전방 상단 벽면 튕김 (상대편 코어 토스 처리 효과)
+            if (ball.y - ball.radius < 0) { ball.y = ball.radius; ball.vy *= -1; camera.shake = 2; }
+
+            // 하단 아웃 데드존 도달 시 실점
+            if (ball.y - ball.radius > canvas.height) {
+                lives--;
+                updateHUD();
+                if (lives <= 0) {
+                    gameState = 'GAMEOVER';
+                    document.getElementById('final-rally').innerText = rallyCount;
+                    showOverlay('RESULT');
+                } else {
+                    // 유휴 리스폰 리셋 (중앙 상단)
+                    ball.x = canvas.width / 2; ball.y = 160;
+                    ball.vx = (Math.random() > 0.5 ? 3.5 : -3.5); ball.vy = 5;
+                }
+                return;
+            }
+
+            // 라켓과 탄환 공의 픽셀 물리 충돌 검사
+            let distance = Math.hypot(ball.x - racket.x, ball.y - racket.y);
+            if (distance < ball.radius + racket.radius) {
+                let overlap = (ball.radius + racket.radius) - distance;
+                let normalX = (ball.x - racket.x) / distance;
+                let normalY = (ball.y - racket.y) / distance;
+                ball.x += normalX * overlap;
+                ball.y += normalY * overlap;
+
+                // 정면 패스 반사 고정 메트릭스
+                ball.vy = -Math.abs(ball.vy); 
+
+                // 라켓 스윙 속도 합성 분출
+                ball.vx += racket.vx * 0.3;
+                ball.vy += racket.vy * 0.32;
+
+                // 종방향 최고 속도 한계 제한
+                let currentSpeed = Math.hypot(ball.vx, ball.vy);
+                if (currentSpeed > ball.speedMax) {
+                    ball.vx = (ball.vx / currentSpeed) * ball.speedMax;
+                    ball.vy = (ball.vy / currentSpeed) * ball.speedMax;
+                }
+                if (Math.abs(ball.vy) < 4.5) ball.vy = -4.5;
+
+                rallyCount++;
+                updateHUD();
+                
+                let swingForce = Math.hypot(racket.vx, racket.vy);
+                camera.shake = Math.min(8, 2.5 + swingForce * 0.3); 
+                createImpactParticles(ball.x, ball.y + ball.radius, Math.min(20, 8 + Math.floor(swingForce)));
+            }
+
+            // 파티클 소멸 필터
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx; p.y += p.vy; p.alpha -= 0.035;
+                if (p.alpha <= 0) particles.splice(i, 1);
+            }
+        }
+
+        // --- 4. HUD 전광판 인스턴스 ---
+        function updateHUD() {
+            document.getElementById('rally-count').innerText = rallyCount;
+            let heartStr = '';
+            for (let i = 0; i < 3; i++) {
+                heartStr += i < lives ? '♥' : '♡';
+            }
+            document.getElementById('life-text').innerText = heartStr;
+        }
+
+        function startGame() {
+            rallyCount = 0; lives = 3;
+            updateHUD();
+            ball.x = 253; ball.y = 160; ball.vx = 3; ball.vy = 5;
+            particles = []; camera.shake = 0;
+            showOverlay('NONE');
+            gameState = 'PLAYING';
+        }
+
+        function showOverlay(type) {
+            document.getElementById('screen-loading').classList.add('hidden');
+            document.getElementById('screen-start').classList.add('hidden');
+            document.getElementById('screen-result').classList.add('hidden');
+            if (type === 'START') document.getElementById('screen-start').classList.remove('hidden');
+            if (type === 'RESULT') document.getElementById('screen-result').classList.remove('hidden');
+        }
+
+        // --- 5. [전면 수정] 세로 종방향 테니스 코트 레이아웃 수동 드로잉 ---
+        function drawVerticalTennisCourt() {
+            // 외부 잔디 영역 프레임 아웃 바운더리 그린
+            ctx.fillStyle = '#218c74'; ctx.fillRect(0, 0, canvas.width, canvas.height); 
+            
+            // 고급스러운 내측 클래식 블루 코트 구역 정렬 매핑
+            const pad = 40;
+            ctx.fillStyle = '#227093'; 
+            ctx.fillRect(pad, pad, canvas.width - pad*2, canvas.height - pad*2);
+            
+            // 규격 백색 선 라인 드로잉
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; ctx.lineWidth = 4;
+            ctx.strokeRect(pad, pad, canvas.width - pad*2, canvas.height - pad*2);
+            
+            // [정밀 매핑] 가로 정중앙을 가르는 수평 센터 테니스 네트 레이아웃
+            const netY = canvas.height / 2; // Y: 450 지점 고정
+            ctx.fillStyle = 'rgba(20, 35, 30, 0.4)'; ctx.fillRect(pad, netY - 15, canvas.width - pad*2, 30);
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+            ctx.beginPath(); 
+            ctx.moveTo(pad, netY - 15); ctx.lineTo(canvas.width - pad, netY - 15);
+            ctx.moveTo(pad, netY + 15); ctx.lineTo(canvas.width - pad, netY + 15);
+            ctx.stroke();
+
+            // 상단/하단 서비스 박스 라인 구축 (Y: 300 및 Y: 600 수평선)
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(pad, 290); ctx.lineTo(canvas.width - pad, 290);
+            ctx.moveTo(pad, 610); ctx.lineTo(canvas.width - pad, 610);
+            ctx.stroke();
+
+            // 수직 중앙 분할 척추 센터 마크 라인 (서비스 박스 전용 배분)
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 290); ctx.lineTo(canvas.width / 2, 610);
+            ctx.stroke();
+        }
+
+        // --- 6. 프레임 애니메이션 루프 ---
+        function renderLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameState === 'PLAYING' || gameState === 'GAMEOVER') {
+                updateGamePhysics();
+
+                let shakeX = 0, shakeY = 0;
+                if (camera.shake > 0) {
+                    shakeX = (Math.random() - 0.5) * camera.shake;
+                    shakeY = (Math.random() - 0.5) * camera.shake;
+                    camera.shake *= 0.88;
+                }
+
+                ctx.save();
+                ctx.translate(shakeX, shakeY); 
+
+                // 종스크롤 스타일 코드로 대변환된 맵 드로잉
+                drawVerticalTennisCourt();
+
+                // 펠트 보풀 파티클
+                particles.forEach(p => {
+                    ctx.save(); ctx.globalAlpha = p.alpha;
+                    ctx.fillStyle = p.color; ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); ctx.fill();
+                    ctx.restore();
+                });
+
+                // 전통 클래식 스포츠 노란 테니스공
+                ctx.save();
+                ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 8;
+                ctx.fillStyle = '#f4d03f'; ctx.strokeStyle = '#4a3525'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                // 공 내부 결 라인
+                ctx.strokeStyle = 'rgba(255,255,255,0.65)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 4]);
+                ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius * 0.72, 0.3, Math.PI - 0.3); ctx.stroke();
+                ctx.restore();
+
+                // 빈티지 나무 랠리 라켓 오브젝트 그리기
+                ctx.save();
+                ctx.translate(racket.x, racket.y);
+                
+                // 원목 프레임 테두리 명암
+                ctx.strokeStyle = '#b9770e'; ctx.lineWidth = 6.5;
+                ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 5;
+                ctx.beginPath(); ctx.arc(0, 0, racket.radius, 0, Math.PI * 2); ctx.stroke();
+                
+                // 정밀 그물망 스트링 연산
+                ctx.strokeStyle = 'rgba(230, 230, 230, 0.45)'; ctx.lineWidth = 1.5; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+                ctx.beginPath();
+                for (let i = -racket.radius + 15; i < racket.radius; i += 13) {
+                    let hLen = Math.sqrt(racket.radius * racket.radius - i * i);
+                    ctx.moveTo(-hLen, i); ctx.lineTo(hLen, i);
+                    ctx.moveTo(i, -hLen); ctx.lineTo(i, hLen);
+                }
+                ctx.stroke();
+
+                // 가죽 핸들 그립 거치대 축
+                ctx.fillStyle = '#78350f'; ctx.fillRect(-6, racket.radius - 2, 12, 26);
+                ctx.restore();
+
+                ctx.restore(); 
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        renderLoop();
+    </script>
+</body>
+</html>
