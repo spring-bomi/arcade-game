@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>현대면세점 VIP 아케이드 - LUXURY GOLD BAR CATCH</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            background: radial-gradient(circle at center, #0f131e 0%, #05060a 100%);
+            color: #fff;
+            font-family: 'Impact', 'Noto Sans KR', sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* [고도화 1] 아케이드 화면 흔들림(Screen Shake) 효과용 컨테이너 */
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 480px;
+            height: 100vh;
+            max-height: 850px;
+            background: linear-gradient(180deg, #0e1424 0%, #05070f 100%);
+            border: 3px solid #d4af37;
+            box-shadow: 0 0 30px rgba(212, 175, 55, 0.2), inset 0 0 50px rgba(0,0,0,0.9);
+            overflow: hidden;
+        }
+        
+        /* 화면 흔들림 애니메이션 클래스 */
+        .shake {
+            animation: screenShake 0.25s linear;
+        }
+
+        /* [고도화 3] 실시간 스코어 및 라이프 HUD */
+        .hud-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 25px 0 25px;
+            z-index: 10;
+            position: relative;
+        }
+        .score-box {
+            font-size: 24px;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+            letter-spacing: 1px;
+        }
+        .score-box span {
+            color: #d4af37;
+            font-weight: bold;
+        }
+        .lives-box {
+            display: flex;
+            gap: 5px;
+        }
+        .life-heart {
+            width: 18px;
+            height: 18px;
+            background-color: #d4af37;
+            transform: rotate(-45deg);
+            position: relative;
+            display: inline-block;
+            box-shadow: 0 0 10px #d4af37;
+            transition: all 0.3s ease;
+        }
+        .life-heart::before, .life-heart::after {
+            content: "";
+            width: 18px;
+            height: 18px;
+            background-color: #d4af37;
+            border-radius: 50%;
+            position: absolute;
+        }
+        .life-heart::before { top: -9px; left: 0; }
+        .life-heart::after { top: 0; left: 9px; }
+        /* 생명 감소 시 효과 */
+        .life-heart.lost {
+            background-color: #2c3e50 !important;
+            box-shadow: none !important;
+            transform: rotate(-45deg) scale(0.8);
+        }
+        .life-heart.lost::before, .life-heart.lost::after {
+            background-color: #2c3e50 !important;
+        }
+
+        /* 현대면세점 타이틀 */
+        .game-title {
+            text-align: center;
+            color: rgba(212, 175, 55, 0.6);
+            font-size: 11px;
+            letter-spacing: 4px;
+            margin-top: 5px;
+        }
+
+        /* 5개 황금빛 슬롯 */
+        .slots-container {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 30px;
+            margin-top: 20px;
+            position: relative;
+            z-index: 5;
+        }
+        .slot {
+            width: 52px;
+            height: 16px;
+            background: #1a150e;
+            border: 2px solid #d4af37;
+            border-bottom: none;
+            border-radius: 4px 4px 0 0;
+            box-shadow: 0 0 10px rgba(212,175,55,0.4);
+        }
+
+        /* [고도화 1] 글로우 효과를 강화한 캐치 존 */
+        .catch-zone {
+            position: absolute;
+            bottom: 140px;
+            left: 20px;
+            right: 20px;
+            height: 80px;
+            border-top: 2px dashed rgba(212, 175, 55, 0.5);
+            border-bottom: 2px dashed rgba(212, 175, 55, 0.5);
+            background: linear-gradient(180deg, rgba(212, 175, 55, 0.02) 0%, rgba(212, 175, 55, 0.08) 50%, rgba(212, 175, 55, 0.02) 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2;
+        }
+        .catch-zone.active {
+            background: linear-gradient(180deg, rgba(212, 175, 55, 0.2) 0%, rgba(212, 175, 55, 0.4) 50%, rgba(212, 175, 55, 0.2) 100%);
+            border-color: #fff;
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.6);
+        }
+        .catch-zone-label {
+            font-size: 12px;
+            color: rgba(212, 175, 55, 0.7);
+            letter-spacing: 5px;
+        }
+
+        /* 낙하 골드바 */
+        .gold-bar {
+            position: absolute;
+            width: 48px;
+            height: 95px;
+            background: linear-gradient(135deg, #bf953f 0%, #fcf6ba 25%, #b38728 50%, #fbf5b7 75%, #aa771c 100%);
+            border-radius: 4px;
+            box-shadow: 0 0 20px rgba(252, 246, 186, 0.7), 0 5px 15px rgba(0,0,0,0.5);
+            z-index: 4;
+            transform: translateX(-50%);
+        }
+
+        /* [고도화 1] 실시간 콤보 팝업 텍스트 효과 */
+        .combo-popup {
+            position: absolute;
+            left: 50%;
+            bottom: 240px;
+            transform: translateX(-50%) scale(0.5);
+            font-size: 36px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 10px #d4af37, 0 0 20px #d4af37;
+            z-index: 10;
+            opacity: 0;
+            pointer-events: none;
+            animation: comboFly 0.4s ease-out forwards;
+        }
+
+        /* 하단 조작 가이드 안내 */
+        .instruction-bottom {
+            position: absolute;
+            bottom: 45px;
+            width: 100%;
+            text-align: center;
+            color: #8a94a6;
+            font-size: 13px;
+            letter-spacing: 1px;
+        }
+
+        /* 카메라 상태 정보 */
+        #camera-status {
+            position: absolute;
+            top: 23px;
+            left: 110px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #e74c3c;
+            box-shadow: 0 0 8px #e74c3c;
+        }
+        #camera-status.ready {
+            background: #2ecc71;
+            box-shadow: 0 0 8px #2ecc71;
+        }
+
+        /* 카메라 인플레이 프리뷰 */
+        #cam-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            overflow: hidden;
+            opacity: 0.4;
+            border: 2px solid #d4af37;
+            z-index: 1;
+            filter: grayscale(100%) brightness(1.2);
+        }
+        #webcam { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        #canvas { position: absolute; top:0; left:0; width:100%; height:100%; transform: scaleX(-1); }
+
+        /* 손 미검출 가이드 오버레이 */
+        #hand-lost-alert {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(5,7,12,0.9);
+            padding: 20px;
+            border: 1px solid #d4af37;
+            border-radius: 8px;
+            text-align: center;
+            color: #d4af37;
+            z-index: 12;
+            font-size: 14px;
+            display: none;
+            box-shadow: 0 0 15px rgba(0,0,0,0.5);
+        }
+
+        /* [고도화 4] 아케이드 스타일 오버레이 패널 */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 7, 12, 0.96);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            padding: 30px;
+            text-align: center;
+        }
+        .overlay.hidden { display: none; }
+
+        /* [고도화 4] 아케이드 오프닝 글자 깜빡임 */
+        .blink-text {
+            font-size: 18px;
+            color: #edd38c;
+            letter-spacing: 3px;
+            margin: 30px 0;
+            animation: textBlink 0.8s infinite alternate;
+        }
+
+        /* [고도화 4] 3, 2, 1, GO 카운트다운 레이어 */
+        #countdown-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 18;
+            font-size: 90px;
+            font-weight: bold;
+            color: #d4af37;
+            text-shadow: 0 0 20px #d4af37, 0 0 40px #b38728;
+            display: none;
+        }
+
+        .btn-arcade {
+            background: linear-gradient(180deg, #cf9e3a 0%, #b38728 100%);
+            border: 2px solid #fff;
+            color: #05070f;
+            padding: 15px 40px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(212,175,55,0.5);
+            letter-spacing: 1px;
+        }
+        .btn-arcade:hover { transform: scale(1.05); }
+
+        .prize-card {
+            font-size: 28px;
+            color: #fff;
+            text-shadow: 0 0 15px #d4af37;
+            background: rgba(212,175,55,0.15);
+            padding: 15px 30px;
+            border: 2px solid #d4af37;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .particle {
+            position: absolute;
+            width: 6px; height: 6px;
+            background: #fcf6ba;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* 애니메이션 키프레임들 */
+        @keyframes screenShake {
+            0% { transform: translate(0, 0); }
+            20% { transform: translate(-6px, 4px); }
+            40% { transform: translate(6px, -4px); }
+            60% { transform: translate(-4px, -4px); }
+            80% { transform: translate(4px, 4px); }
+            100% { transform: translate(0, 0); }
+        }
+        @keyframes comboFly {
+            0% { opacity: 0; transform: translateX(-50%) scale(0.4); bottom: 220px; }
+            30% { opacity: 1; transform: translateX(-50%) scale(1.2); }
+            100% { opacity: 0; transform: translateX(-50%) scale(1.0); bottom: 270px; }
+        }
+        @keyframes textBlink { 0% { opacity: 0.2; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="hud-container">
+        <div class="score-box">SCORE: <span id="current-score">00000</span></div>
+        <div class="lives-box" id="lives-box">
+            <div class="life-heart" id="life-0"></div>
+            <div class="life-heart" id="life-1"></div>
+            <div class="life-heart" id="life-2"></div>
+        </div>
+    </div>
+    <div class="game-title">HYUNDAI DUTY FREE VIP ARCADE</div>
+    <div id="camera-status"></div>
+
+    <div class="slots-container">
+        <div class="slot" id="slot-0"></div>
+        <div class="slot" id="slot-1"></div>
+        <div class="slot" id="slot-2"></div>
+        <div class="slot" id="slot-3"></div>
+        <div class="slot" id="slot-4"></div>
+    </div>
+
+    <div class="catch-zone" id="catch-zone">
+        <span class="catch-zone-label">CATCH ZONE</span>
+    </div>
+
+    <div class="instruction-bottom">손을 펴고 대기하다가 타이밍에 맞춰 주먹을 쥐세요!</div>
+
+    <div id="cam-container">
+        <video id="webcam" autoplay playsinline muted hidden></video>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div id="hand-lost-alert">✋ 카메라 앞에 손을 펼쳐 정렬해 주세요!</div>
+    <div id="countdown-layer">3</div>
+
+    <div class="overlay" id="intro-overlay">
+        <h1 style="font-size:32px; color:#d4af37; letter-spacing:2px;">GOLD BAR CATCH</h1>
+        <p style="color:#a4b0c2; margin-top:10px; font-size:14px; line-height:1.6;">
+            현대면세점 VIP 라운지 한정 순발력 챌린지<br>
+            불시에 고속 낙하하는 골드바를 낚아채세요.
+        </p>
+        <div class="blink-text">INSERT VIP PASS TO START</div>
+        <button class="btn-arcade" onclick="initGameFlow()">CHALLENGE START</button>
+    </div>
+
+    <div class="overlay hidden" id="result-overlay">
+        <h1 style="font-size:28px; color:#e74c3c; id="result-main-title"">GAME OVER</h1>
+        <p style="color:#a4b0c2; margin-top:10px;" id="result-comment">최종 점수를 확인하세요.</p>
+        <div id="result-score-display" style="font-size:42px; color:#d4af37; margin:15px 0;">00000</div>
+        <div id="prize-zone"></div>
+        <button class="btn-arcade" onclick="restartGameLoop()">INSERT COIN (RETRY)</button>
+    </div>
+</div>
+
+<script>
+    // 오디오 컨텍스트 객체 (고도화 2: Web Audio API 주파수 합성)
+    let audioCtx = null;
+
+    // DOM 캐싱
+    const container = document.getElementById('game-container');
+    const catchZone = document.getElementById('catch-zone');
+    const scoreDisplay = document.getElementById('current-score');
+    const countdownLayer = document.getElementById('countdown-layer');
+    const handLostAlert = document.getElementById('hand-lost-alert');
+    const introOverlay = document.getElementById('intro-overlay');
+    const resultOverlay = document.getElementById('result-overlay');
+    const cameraStatus = document.getElementById('camera-status');
+
+    // 게임 상태 핵심 데이터
+    let gameState = 'READY';
+    let score = 0;
+    let combo = 0;
+    let lives = 3;
+    let baseSpeed = 13; // 기본 속도 (충분히 빠른 몰입감 선사)
+    let currentSpeed = 13;
+    let currentY = 0;
+    let goldBar = null;
+    let dropAnimationId = null;
+    let slotPositions = [];
+
+    // 손 인식 제어 변수
+    let handsDetector = null;
+    let cameraInstance = null;
+    let handState = 'NONE';
+    let prevHandState = 'NONE';
+    let isHandTracked = false;
+
+    // [고도화 2] 오디오 주파수 합성 합성음(SFX) 엔진
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    function playSound(type) {
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'beep') { // 카운트다운 삑 소리
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(440, now);
+            gain.gain.setValueAtTime(0.15, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now); osc.stop(now + 0.1);
+        } else if (type === 'go') { // 카운트다운 시작 고음 소리
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, now);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+        } else if (type === 'success') { // 캐치 성공 아케이드 콤보음
+            osc.type = 'triangle';
+            const baseFreq = 523.25; // C5
+            // 콤보가 올라갈수록 효과음 피치가 높아짐
+            const pitchShift = Math.min(combo * 40, 400); 
+            osc.frequency.setValueAtTime(baseFreq + pitchShift, now);
+            osc.frequency.setValueAtTime((baseFreq * 1.5) + pitchShift, now + 0.08);
+            osc.frequency.setValueAtTime((baseFreq * 2) + pitchShift, now + 0.16);
+            gain.gain.setValueAtTime(0.25, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+            osc.start(now); osc.stop(now + 0.35);
+        } else if (type === 'fail') { // 놓쳤을 때 무거운 디버프음
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(160, now);
+            osc.frequency.linearRampToValueAtTime(70, now + 0.25);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+            osc.start(now); osc.stop(now + 0.25);
+        }
+    }
+
+    // 슬롯 좌표 연산
+    function calcSlots() {
+        slotPositions = [];
+        const containerRect = container.getBoundingClientRect();
+        for (let i = 0; i < 5; i++) {
+            const slot = document.getElementById(`slot-${i}`);
+            const r = slot.getBoundingClientRect();
+            slotPositions.push((r.left + r.width / 2) - containerRect.left);
+        }
+    }
+
+    // [고도화 4] 아케이드 플로우 시작 (카메라 초기화 -> 카운트다운)
+    async function initGameFlow() {
+        initAudio();
+        introOverlay.classList.add('hidden');
+        calcSlots();
+        
+        if (!handsDetector) {
+            await startCameraAndModel();
+        }
+        runCountdown();
+    }
+
+    // [고도화 4] 3, 2, 1, GO! 카운트다운 연출
+    function runCountdown() {
+        gameState = 'COUNTDOWN';
+        countdownLayer.style.display = 'flex';
+        let count = 3;
+        countdownLayer.textContent = count;
+        playSound('beep');
+
+        const timer = setInterval(() => {
+            count--;
+            if (count > 0) {
+                countdownLayer.textContent = count;
+                playSound('beep');
+            } else if (count === 0) {
+                countdownLayer.textContent = 'GO!';
+                playSound('go');
+            } else {
+                clearInterval(timer);
+                countdownLayer.style.display = 'none';
+                loopNextDrop();
+            }
+        }, 800);
+    }
+
+    // [고도화 3] 루프 기반 연속 게임 시스템 기획 반영
+    function loopNextDrop() {
+        if (lives <= 0) {
+            triggerGameOver();
+            return;
+        }
+        gameState = 'WAITING';
+        if (goldBar) { goldBar.remove(); goldBar = null; }
+
+        // 스코어에 비례하여 낙하 속도 점진적 상승 (스테이지 고도화)
+        currentSpeed = baseSpeed + Math.floor(score / 500) * 1.5;
+        if(currentSpeed > 23) currentSpeed = 23; // 최대 한계 속도 가이드라인
+
+        // 1.2초 ~ 2.8초 사이 불시 투하 랜덤 타이밍
+        const randomDelay = Math.random() * 1600 + 1200;
+        setTimeout(() => {
+            if (gameState === 'WAITING' && lives > 0) {
+                dropGoldBar();
+            }
+        }, randomDelay);
+    }
+
+    // 골드바 낙하 개시
+    function dropGoldBar() {
+        gameState = 'DROPPING';
+        const randomIdx = Math.floor(Math.random() * 5);
+        const startX = slotPositions[randomIdx];
+
+        goldBar = document.createElement('div');
+        goldBar.className = 'gold-bar';
+        goldBar.style.left = `${startX}px`;
+        goldBar.style.top = '55px';
+        container.appendChild(goldBar);
+
+        currentY = 55;
+        dropAnimationId = requestAnimationFrame(updateDropFrame);
+    }
+
+    function updateDropFrame() {
+        if (gameState !== 'DROPPING') return;
+
+        currentY += currentSpeed;
+        goldBar.style.top = `${currentY}px`;
+
+        // 플레이어가 놓치고 바닥으로 떨어진 경우 (실패 연출 분기)
+        if (currentY > container.clientHeight) {
+            handleMiss();
+        } else {
+            dropAnimationId = requestAnimationFrame(updateDropFrame);
+        }
+    }
+
+    // 손 인식 분석 카메라 제어 파트
+    async function startCameraAndModel() {
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        handsDetector = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        handsDetector.setOptions({
+            modelComplexity: 1,
+            maxNumHands: 1,
+            minDetectionConfidence: 0.75,
+            minTrackingConfidence: 0.75
+        });
+
+        handsDetector.onResults((results) => {
+            // 미니 프리뷰 드로잉
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                isHandTracked = true;
+                cameraStatus.classList.add('ready');
+                handLostAlert.style.display = 'none';
+
+                const landmarks = results.multiHandLandmarks[0];
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#d4af37', lineWidth: 2});
+
+                // 주먹 감지 판정
+                prevHandState = handState;
+                const fingerTips = [8, 12, 16, 20];
+                const fingerPIPs = [6, 10, 14, 18];
+                let closeCount = 0;
+
+                for (let i = 0; i < 4; i++) {
+                    if (landmarks[fingerTips[i]].y > landmarks[fingerPIPs[i]].y) {
+                        closeCount++;
+                    }
+                }
+
+                handState = (closeCount >= 3) ? 'FIST' : 'OPEN';
+
+                // 인터랙션 트리거 (손을 폈다가 주먹을 꽉 쥔 바로 그 순간 캐치)
+                if (gameState === 'DROPPING' && prevHandState === 'OPEN' && handState === 'FIST') {
+                    validateCatch();
+                }
+            } else {
+                isHandTracked = false;
+                cameraStatus.classList.remove('ready');
+                if(gameState === 'WAITING' || gameState === 'DROPPING') {
+                    handLostAlert.style.display = 'block';
+                }
+            }
+            canvasCtx.restore();
+        });
+
+        cameraInstance = new Camera(videoElement, {
+            onFrame: async () => {
+                if (gameState === 'WAITING' || gameState === 'DROPPING') {
+                    await handsDetector.send({image: videoElement});
+                }
+            },
+            width: 320, height: 320
+        });
+        await cameraInstance.start();
+    }
+
+    // 주먹 타이밍 검증 판정
+    function validateCatch() {
+        if (gameState !== 'DROPPING' || !goldBar) return;
+
+        const goldRect = goldBar.getBoundingClientRect();
+        const zoneRect = catchZone.getBoundingClientRect();
+
+        const barCenter = goldRect.top + (goldRect.height / 2);
+        // [카메라 레이텐시 보정] 머신러닝 연산 속도를 감안해 판정 스위트 스팟 가이드 여유 배치(+35px)
+        const isInsideZone = (barCenter >= zoneRect.top - 35) && (barCenter <= zoneRect.bottom + 35);
+
+        if (isInsideZone) {
+            handleSuccess(goldRect);
+        } else {
+            handleMiss();
+        }
+    }
+
+    // [고도화 1] 캐치 성공 액션 연출
+    function handleSuccess(goldRect) {
+        gameState = 'SUCCESS';
+        cancelAnimationFrame(dropAnimationId);
+
+        combo++;
+        // 콤보 가중 점수 시스템 연산
+        const addedScore = 100 + (combo - 1) * 50;
+        score += addedScore;
+        scoreDisplay.textContent = String(score).padStart(5, '0');
+
+        // 이펙트 실행
+        triggerScreenShake();
+        playSound('success');
+        showComboPopup(addedScore);
+        
+        const containerRect = container.getBoundingClientRect();
+        popExplosionParticles(goldRect.left + goldRect.width/2 - containerRect.left, goldRect.top + goldRect.height/2 - containerRect.top);
+
+        if (goldBar) goldBar.remove();
+        loopNextDrop();
+    }
+
+    // [고도화 1, 3] 미스/타이밍 실패 액션 연출
+    function handleMiss() {
+        gameState = 'FAIL';
+        cancelAnimationFrame(dropAnimationId);
+        
+        combo = 0; // 콤보 브레이크
+        lives--; // 라이프 감소
+        updateLivesUI();
+
+        triggerScreenShake();
+        playSound('fail');
+
+        // 캐치존 경고 발광 레드 아웃라인
+        catchZone.style.borderColor = '#e74c3c';
+        setTimeout(() => catchZone.style.borderColor = '', 300);
+
+        if (goldBar) goldBar.remove();
+        loopNextDrop();
+    }
+
+    // [고도화 3] 라이프 상태 UI 업데이트
+    function updateLivesUI() {
+        for(let i = 0; i < 3; i++) {
+            const heart = document.getElementById(`life-${i}`);
+            if(i >= lives) {
+                heart.classList.add('lost');
+            } else {
+                heart.classList.remove('lost');
+            }
+        }
+    }
+
+    // [고도화 1] 타격감용 스크린 셰이크(Screen Shake)
+    function triggerScreenShake() {
+        container.classList.add('shake');
+        setTimeout(() => container.classList.remove('shake'), 250);
+    }
+
+    // [고도화 1] 콤보 UI 텍스트 팝업 생성
+    function showComboPopup(addedScore) {
+        const popup = document.createElement('div');
+        popup.className = 'combo-popup';
+        popup.innerHTML = combo > 1 ? `${combo} COMBO!<br><span style="font-size:18px; color:#edd38c;">+${addedScore}</span>` : `CATCH!<br><span style="font-size:18px; color:#edd38c;">+${addedScore}</span>`;
+        container.appendChild(popup);
+        setTimeout(() => popup.remove(), 400);
+    }
+
+    // 팡 터지는 금빛 스파크 파티클
+    function popExplosionParticles(x, y) {
+        catchZone.classList.add('active');
+        setTimeout(() => catchZone.classList.remove('active'), 200);
+
+        for (let i = 0; i < 30; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.left = `${x}px`;
+            p.style.top = `${y}px`;
+            
+            const angle = Math.random() * Math.PI * 2;
+            const speedDist = Math.random() * 10 + 4;
+            const vx = Math.cos(angle) * speedDist;
+            const vy = Math.sin(angle) * speedDist;
+
+            container.appendChild(p);
+
+            let px = x; let py = y; let op = 1;
+            function anim() {
+                px += vx; py += vy + 0.25; op -= 0.03;
+                p.style.left = `${px}px`; p.style.top = `${py}px`; p.style.opacity = op;
+                if (op > 0) requestAnimationFrame(anim); else p.remove();
+            }
+            requestAnimationFrame(anim);
+        }
+    }
+
+    // [고도화 3] 최종 아케이드 게임 오버 전광판 연출
+    function triggerGameOver() {
+        gameState = 'END';
+        resultOverlay.classList.remove('hidden');
+        document.getElementById('result-score-display').textContent = String(score).padStart(5, '0');
+        
+        const prizeZone = document.getElementById('prize-zone');
+        // 오락실 점수 컷인 기준 등급별 리워드 기획 매핑
+        if (score >= 2500) {
+            prizeZone.innerHTML = `<p style="color:#edd38c; font-size:14px;">VIP TOP RANKER 등극!</p><div class="prize-card">선불카드 5만 원권</div>`;
+        } else if (score >= 1000) {
+            prizeZone.innerHTML = `<p style="color:#fff; font-size:14px;">우수한 순발력입니다.</p><div class="prize-card">현대면세점 1만 원 쿠폰</div>`;
+        } else {
+            prizeZone.innerHTML = `<p style="color:#a4b0c2; font-size:14px;">아쉬운 기록입니다.</p><div class="prize-card">H.Point 500P 적립</div>`;
+        }
+    }
+
+    // 재도전 루프 세팅
+    function restartGameLoop() {
+        score = 0;
+        combo = 0;
+        lives = 3;
+        scoreDisplay.textContent = '00000';
+        updateLivesUI();
+        resultOverlay.classList.add('hidden');
+        runCountdown();
+    }
+
+    window.addEventListener('resize', calcSlots);
+</script>
+
+</body>
+</html>
