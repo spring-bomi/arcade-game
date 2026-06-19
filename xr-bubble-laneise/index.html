@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LANEIGE Water Guardian Quest - Elite Assembly Edition</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --primary-blue: #005bc4;
+            --light-blue: #65e7ff;
+            --neon-glow: 0 0 20px rgba(101, 231, 255, 0.85), inset 0 0 15px rgba(101, 231, 255, 0.5);
+            --crystal-blur: blur(12px);
+            --font-family: 'Malgun Gothic', sans-serif;
+            --background-image: url('assets/images/image_2.png');
+            --product-image: url('assets/images/image_0.png');
+            --crystal-panel-image: url('assets/images/image_3.png');
+            --reward-card-image: url('assets/images/image_1.png');
+            --default-bg: url('assets/images/image_2.png');
+        }
+
+        body {
+            margin: 0; overflow: hidden; font-family: var(--font-family);
+            background: #0a2f63; color: #fff; user-select: none; touch-action: none;
+        }
+
+        #app {
+            position: fixed; inset: 0;
+            background-image: var(--default-bg); background-size: cover; background-position: center;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: background-image 0.8s ease-in-out;
+        }
+
+        #webcam-preview {
+            display: none;
+        }
+
+        .screen {
+            position: absolute; inset: 0; display: none;
+            flex-direction: column; align-items: center; justify-content: center;
+            padding: 20px; box-sizing: border-box; text-align: center;
+        }
+        .screen.active { display: flex; }
+
+        .glass-panel {
+            background-color: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 24px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); backdrop-filter: blur(5px);
+        }
+
+        .crystal-btn {
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, rgba(2, 132, 199, 0.6) 100%);
+            border: 2px solid rgba(255, 255, 255, 0.7);
+            color: #fff; width: 190px; height: 46px; font-size: 16px; font-weight: bold;
+            border-radius: 50px; cursor: pointer; transition: all 0.2s ease;
+            box-shadow: inset 0 0 12px rgba(255,255,255,0.5), 0 6px 20px rgba(2, 132, 199, 0.4);
+            display: flex; align-items: center; justify-content: center; letter-spacing: 1px;
+        }
+        .crystal-btn:active { transform: scale(0.95); }
+        .btn-sm { width: 140px; height: 36px; font-size: 13px; margin-top: 5px; border-radius: 50px; }
+
+        #hud { position: absolute; top: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between; z-index: 10; }
+        .hud-panel {
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(2, 132, 199, 0.3) 100%);
+            border: 1.5px solid rgba(101, 231, 255, 0.4); border-radius: 14px;
+            font-weight: bold; display: flex; align-items: center; justify-content: center;
+            height: 36px; font-size: 13px; padding: 0 18px; backdrop-filter: var(--crystal-blur);
+            text-shadow: 0 0 5px var(--light-blue);
+        }
+
+        #mission-title {
+            position: absolute; top: 75px; font-size: 18px; font-weight: bold;
+            color: var(--light-blue); text-shadow: 0 2px 8px rgba(0,0,0,0.5); z-index: 9;
+            background: rgba(10, 47, 99, 0.75); padding: 8px 24px; border-radius: 20px;
+            border: 1px solid rgba(101, 231, 255, 0.3);
+        }
+
+        #mission-tip {
+            position: absolute; top: 130px; left: 30px; right: 30px;
+            background: linear-gradient(90deg, rgba(239, 68, 68, 0.85), rgba(185, 28, 28, 0.95));
+            padding: 12px; border-radius: 12px; font-size: 13px; text-align: center;
+            border: 2px solid #fca5a5; display: none; z-index: 99;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+            animation: pulse-alert 1.5s infinite alternate;
+            font-weight: bold; line-height: 1.5;
+        }
+
+        #board { position: absolute; inset: 130px 20px 110px; width: calc(100% - 40px); }
+
+        #xr-cursor {
+            position: fixed; width: 24px; height: 24px;
+            background: radial-gradient(circle, #fff 0%, rgba(101,231,255,0.8) 40%, rgba(2,132,199,0) 100%);
+            border-radius: 50%; pointer-events: none; z-index: 1000; display: none;
+            box-shadow: 0 0 15px var(--light-blue), 0 0 30px var(--primary-blue);
+        }
+        #xr-cursor.pinching { transform: scale(0.6); background: #65e7ff; box-shadow: 0 0 25px #fff; }
+
+        /* 가이드선 네온 가이드 시스템 */
+        .slot {
+            position: absolute; width: 80px; height: 80px; box-sizing: border-box;
+            border: 3.5px dashed #00ffff !important; 
+            background: rgba(0, 203, 254, 0.25) !important;
+            box-shadow: var(--neon-glow);
+            animation: slot-neon-glow 1.5s infinite alternate ease-in-out;
+            z-index: 5;
+        }
+
+        @keyframes slot-neon-glow {
+            0% { border-color: #00ffff; box-shadow: 0 0 12px rgba(0, 203, 254, 0.6), inset 0 0 8px rgba(0, 203, 254, 0.4); }
+            100% { border-color: #ffffff; box-shadow: 0 0 28px rgba(101, 231, 255, 1), inset 0 0 18px rgba(101, 231, 255, 0.7); }
+        }
+
+        /* 1라운드 물길 연결하기 백그라운드 파이프라인 */
+        .water-pipeline {
+            position: absolute; height: 16px; 
+            background: linear-gradient(90deg, rgba(2, 132, 199, 0.3), rgba(101, 231, 255, 0.4));
+            border-top: 2px solid rgba(101, 231, 255, 0.4);
+            border-bottom: 2px solid rgba(101, 231, 255, 0.4);
+            z-index: 2; box-shadow: 0 0 12px rgba(101, 231, 255, 0.2);
+        }
+        .water-pipeline.activated {
+            background: linear-gradient(90deg, #005bc4, #65e7ff, #ffffff);
+            border-color: #fff; box-shadow: 0 0 25px #65e7ff, inset 0 0 8px #fff;
+            animation: pulse-alert 0.8s infinite alternate;
+        }
+
+        /* 퍼즐 조각 렌더링 */
+        .piece {
+            position: absolute; width: 80px; height: 80px; box-sizing: border-box;
+            background: radial-gradient(circle at 30% 30%, #ffffff 0%, #afe7ff 30%, #0284c7 75%, #0c4a6e 100%);
+            box-shadow: inset -3px -3px 8px rgba(0,0,0,0.5), inset 3px 3px 8px rgba(255,255,255,0.6), 0 6px 15px rgba(2,132,199,0.3);
+            animation: float 4s ease-in-out infinite; animation-delay: var(--delay);
+            z-index: 10;
+            cursor: grab;
+        }
+        .piece:active { cursor: grabbing; }
+
+        /* 각 라운드 유물 명세 클립패스 */
+        .shard-cap-left { border-radius: 40px 0 0 40px; }
+        .shard-cap-mid { border-radius: 0; }
+        .shard-cap-right { border-radius: 0 40px 40px 0; }
+        .shard-mol-node { border-radius: 50%; background: radial-gradient(circle at 30% 30%, #ffffff 0%, #e0f2fe 20%, #0284c7 65%, #1e3a8a 100%); }
+        .shard-bank-dome { border-radius: 80px 80px 0 0; }
+        .shard-bank-pillar { border-radius: 6px; }
+        .shard-bank-core { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+        .shard-bank-base { border-radius: 0 0 16px 16px; }
+        .shard-tower-tip { clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
+        .shard-tower-mid { clip-path: polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%); }
+        .shard-tower-low { clip-path: polygon(0% 0%, 100% 0%, 85% 100%, 15% 100%); }
+        .shard-tower-wing-l { clip-path: polygon(100% 0%, 100% 100%, 0% 100%); }
+        .shard-tower-wing-r { clip-path: polygon(0% 0%, 0% 100%, 100% 100%); }
+
+        .piece.held { animation: none !important; filter: brightness(1.25) contrast(1.1); z-index: 50; box-shadow: 0 0 25px var(--light-blue); }
+        .piece.locked { animation: none !important; border: 2.5px solid #fff !important; box-shadow: inset 0 0 12px #fff !important; z-index: 4; cursor: default; }
+
+        #gaugeWrap {
+            position: absolute; left: 20px; right: 20px; bottom: 25px; height: 22px;
+            background: rgba(6, 30, 66, 0.7); border-radius: 50px; overflow: hidden; border: 1.5px solid rgba(255,255,255,0.15);
+        }
+        #gauge {
+            height: 100%; width: 0%; background: linear-gradient(90deg, #0284c7 0%, #65e7ff 60%, #ffffff 100%);
+            box-shadow: 0 0 12px var(--light-blue); transition: width 0.3s ease-out;
+        }
+
+        /* 결과 스크린 레이아웃 */
+        #step-result .result-scroll-wrapper {
+            display: flex; flex-direction: column; align-items: center; gap: 16px;
+            width: 100%; max-width: 440px; max-height: 92vh; overflow-y: auto; padding: 10px; box-sizing: border-box;
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .reward-card-top-view {
+            width: 100%; aspect-ratio: 1000 / 675; background-image: var(--reward-card-image);
+            background-size: 100% 200%; background-position: top center; background-repeat: no-repeat; border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 20px rgba(101,231,255,0.2);
+        }
+        .reward-card-bottom-view {
+            width: 100%; aspect-ratio: 1000 / 675; background-image: var(--reward-card-image);
+            background-size: 100% 200%; background-position: bottom center; background-repeat: no-repeat; border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 20px rgba(101,231,255,0.2);
+        }
+        .score-display-crystal {
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(2, 132, 199, 0.4) 100%);
+            border: 1.5px solid rgba(101, 231, 255, 0.4); padding: 10px 30px; border-radius: 16px;
+            font-size: 15px; font-weight: bold; text-shadow: 0 0 5px var(--light-blue); backdrop-filter: var(--crystal-blur);
+        }
+        .reward-actions { display: flex; gap: 15px; justify-content: center; width: 100%; }
+
+        /* 🌟 [추가] 팝업창을 닫았을 때 우측 하단에 상주할 플로팅 버튼 스타일 */
+        #reopen-btn {
+            position: fixed; bottom: 30px; right: 20px; z-index: 999;
+            box-shadow: 0 0 20px var(--light-blue);
+            border: 2px solid #fff;
+            animation: pulse-alert 1s infinite alternate;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(var(--active-rot, 0deg)); }
+            50% { transform: translateY(-8px) rotate(var(--active-rot, 0deg)); }
+        }
+        @keyframes pulse-alert {
+            0% { opacity: 0.85; filter: brightness(0.9); }
+            100% { opacity: 1; filter: brightness(1.2); }
+        }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <audio id="bg-music" src="assets/sounds/Crystal Water.mp3" loop></audio>
+    <div id="xr-cursor"></div>
+    <video id="webcam-preview" autoplay playsinline></video>
+
+    <div id="step-welcome" class="screen active">
+        <div class="card glass-panel" style="padding: 40px; max-width: 400px; text-align: center; border-radius: 32px;">
+            <div style="font-size:36px; font-weight:900; letter-spacing:6px; margin-bottom:5px; text-shadow: 0 0 10px var(--light-blue);">LANEIGE</div>
+            <h3>Water Drop Rescue</h3>
+            <p style="font-size:14px; color:#e0f2fe; line-height:1.6; margin: 20px 0;">당신은 라네즈 워터랜드의 워터 가디언이 되었습니다! <br>미래의 피부 도시 워터랜드(Water Land) 는 수분 에너지로 유지되는 세계입니다. 어느 날 강력한 열기 몬스터가 등장해 도시 곳곳의 수분 구슬(Water Capsule)을 흩뿌렸고, 피부 도시가 건조해지기 시작했습니다. <br>도시 전역에 유실된 수분 파편들을 중앙 결합하여 라네즈의 핵심 4대 에너지를 복원하세요!</p>
+            <button class="crystal-btn" style="margin: 0 auto;" onclick="initXRAndGame()">START</button>
+        </div>
+    </div>
+
+    <div id="step-game" class="screen">
+        <div id="hud">
+            <div id="score-panel" class="hud-panel">Score <span id="score">0</span></div>
+            <div id="round-panel" class="hud-panel">Round <span id="round">1</span>/4</div>
+            <div id="gauge-panel" class="hud-panel">수분 충전률 <span id="pct">0</span>%</div>
+        </div>
+        <div id="mission-title">🔮 활성 에너지: <span id="target-object-name">로딩 중</span></div>
+        <div id="mission-tip">⚠️ [4라운드 특수 미션: 회전 복원] 조각을 가볍게 클릭(탭)하면 90도 회전합니다! 올바른 각도로 결합해야 타워가 복원됩니다!</div>
+        <div id="board"></div>
+        <div id="gaugeWrap"><div id="gauge"></div></div>
+    </div>
+
+    <div id="step-result" class="screen">
+        <button id="reopen-btn" class="crystal-btn" style="display: none;" onclick="togglePopup(true)">🎁 리워드 보기</button>
+
+        <div class="result-scroll-wrapper" id="result-popup">
+            <div class="reward-card-top-view"></div>
+            <div class="score-display-crystal">
+                MISSION COMPLETE! 스코어: <span id="final-score" style="color:var(--light-blue);">0</span>점
+            </div>
+            <div class="reward-card-bottom-view"></div>
+            
+            <div class="reward-actions">
+                <button class="crystal-btn btn-sm" onclick="alert('가디언 인증 혜택 보관 완료!')">🎟️ 혜택 저장</button>
+                <button class="crystal-btn btn-sm" style="background: rgba(101, 231, 255, 0.2); border: 1.5px solid var(--light-blue);" onclick="togglePopup(false)">🗺️ 도시 구경하기</button>
+            </div>
+            <button class="crystal-btn" style="width:100%; margin-top:20px; background: none; border: 1.5px solid #fff;" onclick="location.reload()">다시 하기</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const board = document.getElementById('board');
+    const xrCursor = document.getElementById('xr-cursor');
+    const bgMusic = document.getElementById('bg-music');
+    
+    let score = 0, round = 1, placedInRound = 0, totalPlacedAll = 0;
+    const roundConfig = [4, 4, 5, 5]; 
+    const maxPieces = roundConfig.reduce((a, b) => a + b, 0);
+
+    const roundWorldviewNames = [
+        "1라: 물길 연결 및 워터 캡슐 복원",
+        "2라: 히알루로닉 분자 결합 구조체",
+        "3라: 워터뱅크 바이오 가디언 금고",
+        "4라: 가디언 크리스탈 스파이어 타워"
+    ];
+
+    const roundBackgrounds = {
+        1: "url('assets/images/0.png')",
+        2: "url('assets/images/20.png')",
+        3: "url('assets/images/45.png')",
+        4: "url('assets/images/75.png')"
+    };
+
+    let activePiece = null;
+    let isPinchingPrevious = false;
+    let pinchStartTime = 0;
+
+    async function initXRAndGame() {
+        document.getElementById('step-welcome').classList.remove('active');
+        document.getElementById('step-game').classList.add('active');
+        
+        bgMusic.play().catch(e => console.log("Audio contexts trigger policy bypass"));
+        
+        startGame();
+
+        try {
+            xrCursor.style.display = 'block';
+            const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+            hands.onResults(onHandResults);
+
+            const videoElement = document.getElementById('webcam-preview');
+            const camera = new Camera(videoElement, {
+                onFrame: async () => { await hands.send({image: videoElement}); },
+                width: 640, height: 480
+            });
+            await camera.start();
+        } catch (err) {
+            console.log("웹캠 미배치 상태. 마우스 전용 모드로 우회 기동합니다.");
+            xrCursor.style.display = 'none';
+        }
+    }
+
+    function onHandResults(results) {
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            const landmarks = results.multiHandLandmarks[0];
+            const handX = (1 - landmarks[8].x) * window.innerWidth;
+            const handY = landmarks[8].y * window.innerHeight;
+
+            xrCursor.style.left = (handX - 12) + 'px';
+            xrCursor.style.top = (handY - 12) + 'px';
+
+            const dist = Math.hypot(landmarks[4].x - landmarks[8].x, landmarks[4].y - landmarks[8].y);
+            const isPinching = dist < 0.07;
+
+            if (isPinching) xrCursor.classList.add('pinching');
+            else xrCursor.classList.remove('pinching');
+
+            handleXRGameLogic(handX, handY, isPinching);
+        }
+    }
+
+    function startGame() {
+        score = 0; round = 1; totalPlacedAll = 0;
+        document.getElementById('score').textContent = score;
+        makeRound(round);
+    }
+
+    function makeRound(r) {
+        board.innerHTML = '';
+        placedInRound = 0;
+        const currentPieces = roundConfig[r - 1];
+        document.getElementById('round').textContent = r;
+        document.getElementById('target-object-name').textContent = roundWorldviewNames[r - 1];
+
+        document.getElementById('app').style.backgroundImage = roundBackgrounds[r];
+        document.getElementById('mission-tip').style.display = (r === 4) ? 'block' : 'none';
+
+        const bWidth = board.clientWidth || window.innerWidth - 40;
+        const bHeight = board.clientHeight || window.innerHeight - 240;
+        const centerX = bWidth / 2;
+        const centerY = bHeight * 0.32; 
+
+        const slotLayouts = {
+            1: [{x:-150, y:20, s:'shard-cap-left'}, {x:-70, y:20, s:'shard-cap-mid'}, {x:10, y:20, s:'shard-cap-mid'}, {x:90, y:20, s:'shard-cap-right'}],
+            2: [{x:-40, y:-40, s:'shard-mol-node'}, {x:-110, y:30, s:'shard-mol-node'}, {x:30, y:30, s:'shard-mol-node'}, {x:-40, y:100, s:'shard-mol-node'}],
+            3: [{x:-40, y:-70, s:'shard-bank-dome'}, {x:-95, y:0, s:'shard-bank-pillar'}, {x:15, y:0, s:'shard-bank-pillar'}, {x:-40, y:5, s:'shard-bank-core'}, {x:-40, y:75, s:'shard-bank-base'}],
+            4: [{x:-40, y:-90, s:'shard-tower-tip'}, {x:-40, y:-15, s:'shard-tower-mid'}, {x:-40, y:60, s:'shard-tower-low'}, {x:-115, y:60, s:'shard-tower-wing-l'}, {x:35, y:60, s:'shard-tower-wing-r'}]
+        };
+
+        const currentLayout = slotLayouts[r] || slotLayouts[1];
+
+        if (r === 1) {
+            let pipe = document.createElement('div');
+            pipe.id = 'main-pipeline';
+            pipe.className = 'water-pipeline';
+            pipe.style.left = (centerX - 150) + 'px';
+            pipe.style.top = (centerY + 52) + 'px'; 
+            pipe.style.width = '320px';
+            board.appendChild(pipe);
+        }
+
+        for (let i = 0; i < currentPieces; i++) {
+            const layout = currentLayout[i];
+            
+            let s = document.createElement('div');
+            s.className = `slot ${layout.s}`;
+            s.style.left = (centerX + layout.x) + 'px';
+            s.style.top = (centerY + layout.y) + 'px';
+            s.dataset.id = i;
+            board.appendChild(s);
+
+            let p = document.createElement('div');
+            p.className = `piece ${layout.s}`;
+            
+            let pLeft = Math.random() < 0.5 ? (Math.random() * (centerX - 130)) : (centerX + 110 + Math.random() * (centerX - 170));
+            let pTop = bHeight * 0.62 + (Math.random() * (bHeight * 0.3 - 40));
+            
+            p.style.left = pLeft + 'px';
+            p.style.top = pTop + 'px';
+            p.style.setProperty('--delay', `${(i * 0.35).toFixed(1)}s`);
+            p.dataset.id = i;
+
+            let rot = 0;
+            if (r === 4) {
+                const angles = [90, 180, 270];
+                rot = angles[Math.floor(Math.random() * angles.length)];
+            }
+            p.dataset.rotation = rot;
+            
+            p.style.setProperty('--active-rot', `${rot}deg`);
+            p.style.transform = `rotate(${rot}deg)`;
+
+            board.appendChild(p);
+            initPointerInteraction(p);
+        }
+    }
+
+    function initPointerInteraction(p) {
+        let isDragging = false;
+        let startX = 0, startY = 0;
+        let pStartX = 0, pStartY = 0;
+        let mousePinchStartTime = 0;
+
+        p.onpointerdown = e => {
+            if (p.classList.contains('locked')) return;
+            isDragging = true;
+            p.setPointerCapture(e.pointerId);
+            p.classList.add('held');
+            mousePinchStartTime = Date.now();
+
+            startX = e.clientX;
+            startY = e.clientY;
+            pStartX = parseFloat(p.style.left);
+            pStartY = parseFloat(p.style.top);
+            
+            activePiece = p;
+        };
+
+        p.onpointermove = e => {
+            if (!isDragging) return;
+            let dx = e.clientX - startX;
+            let dy = e.clientY - startY;
+            p.style.left = (pStartX + dx) + 'px';
+            p.style.top = (pStartY + dy) + 'px';
+        };
+
+        p.onpointerup = e => {
+            if (!isDragging) return;
+            isDragging = false;
+            p.releasePointerCapture(e.pointerId);
+            p.classList.remove('held');
+
+            const duration = Date.now() - mousePinchStartTime;
+
+            if (round === 4 && duration < 280) {
+                let rot = (parseInt(p.dataset.rotation) + 90) % 360;
+                p.dataset.rotation = rot;
+                p.style.setProperty('--active-rot', `${rot}deg`);
+                p.style.transform = `rotate(${rot}deg)`;
+                activePiece = null;
+                return;
+            }
+
+            document.querySelectorAll('.slot').forEach(s => {
+                if (s.dataset.id === p.dataset.id) {
+                    const dist = Math.hypot(parseFloat(p.style.left) - parseFloat(s.style.left), parseFloat(p.style.top) - parseFloat(s.style.top));
+                    const rot = parseInt(p.dataset.rotation || 0);
+
+                    if (dist < 40 && rot === 0) {
+                        p.classList.add('locked');
+                        p.style.left = s.style.left;
+                        p.style.top = s.style.top;
+                        p.style.setProperty('--active-rot', `0deg`);
+                        p.style.transform = `rotate(0deg)`;
+                        p.onpointerdown = null;
+
+                        placedInRound++;
+                        totalPlacedAll++;
+                        score += 100;
+                        document.getElementById('score').textContent = score;
+                        
+                        s.style.animation = "none";
+                        s.style.border = "none";
+                        s.style.boxShadow = "none";
+                        s.style.background = "none";
+                        
+                        if (round === 1 && placedInRound === 4) {
+                            document.getElementById('main-pipeline').classList.add('activated');
+                        }
+
+                        updateProgress();
+                    }
+                }
+            });
+            activePiece = null;
+        };
+    }
+
+    function handleXRGameLogic(x, y, isPinching) {
+        const boardRect = board.getBoundingClientRect();
+        const localX = x - boardRect.left;
+        const localY = y - boardRect.top;
+
+        if (isPinching && !isPinchingPrevious) {
+            pinchStartTime = Date.now();
+            document.querySelectorAll('.piece:not(.locked)').forEach(p => {
+                const pX = parseFloat(p.style.left) + 40;
+                const pY = parseFloat(p.style.top) + 40;
+                if (Math.hypot(localX - pX, localY - pY) < 55 && !activePiece) {
+                    activePiece = p;
+                    p.classList.add('held');
+                }
+            });
+        } else if (isPinching && activePiece) {
+            activePiece.style.left = (localX - 40) + 'px';
+            activePiece.style.top = (localY - 40) + 'px';
+        } else if (!isPinching && isPinchingPrevious) {
+            if (activePiece) {
+                activePiece.classList.remove('held');
+                const duration = Date.now() - pinchStartTime;
+                
+                if (round === 4 && duration < 280) {
+                    let rot = (parseInt(activePiece.dataset.rotation) + 90) % 360;
+                    activePiece.dataset.rotation = rot;
+                    activePiece.style.setProperty('--active-rot', `${rot}deg`);
+                    activePiece.style.transform = `rotate(${rot}deg)`;
+                    activePiece = null;
+                    isPinchingPrevious = isPinching;
+                    return;
+                }
+
+                document.querySelectorAll('.slot').forEach(s => {
+                    if (s.dataset.id === activePiece.dataset.id) {
+                        const dist = Math.hypot(parseFloat(activePiece.style.left) - parseFloat(s.style.left), parseFloat(activePiece.style.top) - parseFloat(s.style.top));
+                        const rot = parseInt(activePiece.dataset.rotation || 0);
+
+                        if (dist < 40 && rot === 0) {
+                            activePiece.classList.add('locked');
+                            activePiece.style.left = s.style.left;
+                            activePiece.style.top = s.style.top;
+                            activePiece.style.setProperty('--active-rot', `0deg`);
+                            activePiece.style.transform = `rotate(0deg)`;
+                            
+                            placedInRound++;
+                            totalPlacedAll++;
+                            score += 100;
+                            document.getElementById('score').textContent = score;
+                            
+                            s.style.animation = "none";
+                            s.style.border = "none";
+                            s.style.boxShadow = "none";
+                            s.style.background = "none";
+                            
+                            if (round === 1 && placedInRound === 4) {
+                                document.getElementById('main-pipeline').classList.add('activated');
+                            }
+
+                            updateProgress();
+                        }
+                    }
+                });
+                activePiece = null;
+            }
+        }
+        isPinchingPrevious = isPinching;
+    }
+
+    // 🌟 [추가] 팝업창 여닫기 전용 제어 함수
+    function togglePopup(show) {
+        const popup = document.getElementById('result-popup');
+        const reopenBtn = document.getElementById('reopen-btn');
+        if (show) {
+            popup.style.display = 'flex';
+            reopenBtn.style.display = 'none';
+        } else {
+            popup.style.display = 'none';
+            reopenBtn.style.display = 'flex';
+        }
+    }
+
+    function updateProgress() {
+        let pct = Math.floor((totalPlacedAll / maxPieces) * 100);
+        document.getElementById('pct').textContent = pct;
+        document.getElementById('gauge').style.width = pct + '%';
+
+        if (placedInRound === roundConfig[round - 1]) {
+            if (round < 4) {
+                round++;
+                setTimeout(() => makeRound(round), 900);
+            } else {
+                setTimeout(() => {
+                    document.getElementById('final-score').textContent = score;
+                    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                    document.getElementById('step-result').classList.add('active');
+                    xrCursor.style.display = 'none';
+                    
+                    document.getElementById('app').style.backgroundImage = "url('assets/images/image_2.png')";
+                    
+                    // 최초 진입 시에는 팝업창 열림 상태로 초기화
+                    togglePopup(true);
+                }, 1000);
+            }
+        }
+    }
+</script>
+</body>
+</html>
