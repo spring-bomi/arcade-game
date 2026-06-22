@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LANEIGE Water Guardian Quest - 5 Steps Flow</title>
+    <title>LANEIGE Water Guardian Quest - Elite Assembly Edition (5 Steps)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -15,6 +15,10 @@
             --neon-glow: 0 0 20px rgba(101, 231, 255, 0.85), inset 0 0 15px rgba(101, 231, 255, 0.5);
             --crystal-blur: blur(12px);
             --font-family: 'Malgun Gothic', sans-serif;
+            --background-image: url('assets/images/image_2.png');
+            --product-image: url('assets/images/image_0.png');
+            --crystal-panel-image: url('assets/images/image_3.png');
+            --reward-card-image: url('assets/images/image_1.png');
             --default-bg: url('assets/images/image_2.png');
         }
 
@@ -25,7 +29,6 @@
 
         #app {
             position: fixed; inset: 0;
-            background-color: #0a2f63;
             background-image: var(--default-bg); background-size: cover; background-position: center;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             transition: background-image 0.8s ease-in-out;
@@ -36,29 +39,28 @@
         .screen {
             position: absolute; inset: 0; display: none;
             flex-direction: column; align-items: center; justify-content: center;
-            padding: 20px; box-sizing: border-box; text-align: center; z-index: 10;
+            padding: 20px; box-sizing: border-box; text-align: center;
         }
         .screen.active { display: flex; }
 
         .glass-panel {
-            background-color: rgba(6, 30, 66, 0.7); border: 1px solid rgba(101, 231, 255, 0.3);
-            border-radius: 24px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); backdrop-filter: blur(8px);
-            padding: 40px; max-width: 420px; text-align: center;
+            background-color: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 24px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); backdrop-filter: blur(5px);
         }
 
         .crystal-btn {
             background: linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, rgba(2, 132, 199, 0.6) 100%);
             border: 2px solid rgba(255, 255, 255, 0.7);
-            color: #fff; width: 220px; height: 50px; font-size: 16px; font-weight: bold;
+            color: #fff; width: 190px; height: 46px; font-size: 16px; font-weight: bold;
             border-radius: 50px; cursor: pointer; transition: all 0.2s ease;
             box-shadow: inset 0 0 12px rgba(255,255,255,0.5), 0 6px 20px rgba(2, 132, 199, 0.4);
-            display: flex; align-items: center; justify-content: center; letter-spacing: 1px; margin: 15px auto;
+            display: flex; align-items: center; justify-content: center; letter-spacing: 1px;
         }
         .crystal-btn:active { transform: scale(0.95); }
-        .btn-sm { width: 140px; height: 38px; font-size: 13px; margin: 5px; border-radius: 50px; }
+        .btn-sm { width: 140px; height: 36px; font-size: 13px; margin-top: 5px; border-radius: 50px; }
 
-        /* HUD & Game Elements */
-        #hud { position: absolute; top: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between; z-index: 20; }
+        /* HUD & Game Systems */
+        #hud { position: absolute; top: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between; z-index: 10; }
         .hud-panel {
             background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(2, 132, 199, 0.3) 100%);
             border: 1.5px solid rgba(101, 231, 255, 0.4); border-radius: 14px;
@@ -67,16 +69,23 @@
             text-shadow: 0 0 5px var(--light-blue);
         }
 
-        #mission-tip {
-            position: absolute; top: 80px; left: 30px; right: 30px;
-            background: linear-gradient(90deg, rgba(239, 68, 68, 0.85), rgba(185, 28, 28, 0.95));
-            padding: 10px; border-radius: 12px; font-size: 13px; text-align: center;
-            border: 2px solid #fca5a5; display: none; z-index: 99;
-            box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
-            animation: pulse-alert 1.5s infinite alternate; font-weight: bold;
+        #mission-title {
+            position: absolute; top: 75px; font-size: 18px; font-weight: bold;
+            color: var(--light-blue); text-shadow: 0 2px 8px rgba(0,0,0,0.5); z-index: 9;
+            background: rgba(10, 47, 99, 0.75); padding: 8px 24px; border-radius: 20px;
+            border: 1px solid rgba(101, 231, 255, 0.3);
         }
 
-        #board { position: absolute; inset: 130px 20px 110px; width: calc(100% - 40px); z-index: 15; }
+        #mission-tip {
+            position: absolute; top: 130px; left: 30px; right: 30px;
+            background: linear-gradient(90deg, rgba(239, 68, 68, 0.85), rgba(185, 28, 28, 0.95));
+            padding: 12px; border-radius: 12px; font-size: 13px; text-align: center;
+            border: 2px solid #fca5a5; display: none; z-index: 99;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+            animation: pulse-alert 1.5s infinite alternate; font-weight: bold; line-height: 1.5;
+        }
+
+        #board { position: absolute; inset: 130px 20px 110px; width: calc(100% - 40px); }
 
         #xr-cursor {
             position: fixed; width: 24px; height: 24px;
@@ -86,69 +95,119 @@
         }
         #xr-cursor.pinching { transform: scale(0.6); background: #65e7ff; box-shadow: 0 0 25px #fff; }
 
-        /* Puzzle Slots & Pieces */
+        /* 🌟 기존 네온 가이드 슬롯 시스템 */
         .slot {
-            position: absolute; width: 70px; height: 70px; box-sizing: border-box;
-            border: 3px dashed #00ffff !important; background: rgba(0, 203, 254, 0.2) !important;
-            box-shadow: var(--neon-glow); border-radius: 10px;
-            animation: slot-neon-glow 1.5s infinite alternate ease-in-out; z-index: 5;
+            position: absolute; width: 80px; height: 80px; box-sizing: border-box;
+            border: 3.5px dashed #00ffff !important; 
+            background: rgba(0, 203, 254, 0.25) !important;
+            box-shadow: var(--neon-glow); animation: slot-neon-glow 1.5s infinite alternate ease-in-out; z-index: 5;
         }
+
+        /* 🌟 기존 1라운드 파이프라인 */
+        .water-pipeline {
+            position: absolute; height: 16px; 
+            background: linear-gradient(90deg, rgba(2, 132, 199, 0.3), rgba(101, 231, 255, 0.4));
+            border-top: 2px solid rgba(101, 231, 255, 0.4); border-bottom: 2px solid rgba(101, 231, 255, 0.4);
+            z-index: 2; box-shadow: 0 0 12px rgba(101, 231, 255, 0.2);
+        }
+        .water-pipeline.activated {
+            background: linear-gradient(90deg, #005bc4, #65e7ff, #ffffff);
+            border-color: #fff; box-shadow: 0 0 25px #65e7ff, inset 0 0 8px #fff;
+            animation: pulse-alert 0.8s infinite alternate;
+        }
+
+        /* 🌟 기존 퍼즐 조각 및 라운드별 형태(클립패스) 복구 */
         .piece {
-            position: absolute; width: 70px; height: 70px; box-sizing: border-box;
+            position: absolute; width: 80px; height: 80px; box-sizing: border-box;
             background: radial-gradient(circle at 30% 30%, #ffffff 0%, #afe7ff 30%, #0284c7 75%, #0c4a6e 100%);
             box-shadow: inset -3px -3px 8px rgba(0,0,0,0.5), inset 3px 3px 8px rgba(255,255,255,0.6), 0 6px 15px rgba(2,132,199,0.3);
-            border-radius: 10px; animation: float 4s ease-in-out infinite;
-            z-index: 20; cursor: grab;
+            animation: float 4s ease-in-out infinite; animation-delay: var(--delay); z-index: 10; cursor: grab;
         }
-        .piece.held { animation: none !important; filter: brightness(1.25); z-index: 50; box-shadow: 0 0 25px var(--light-blue); }
+        .piece.held { animation: none !important; filter: brightness(1.25) contrast(1.1); z-index: 50; box-shadow: 0 0 25px var(--light-blue); }
         .piece.locked { animation: none !important; border: 2.5px solid #fff !important; box-shadow: inset 0 0 12px #fff !important; z-index: 4; cursor: default; }
 
-        /* Step 2 Water Drop */
-        .giant-water-drop {
-            width: 120px; height: 120px; border-radius: 50% 50% 50% 5px;
-            background: linear-gradient(135deg, #65e7ff, #005bc4);
-            transform: rotate(-45deg); cursor: pointer;
-            box-shadow: 0 0 30px rgba(101, 231, 255, 0.6), inset 0 0 20px #fff;
-            display: flex; align-items: center; justify-content: center;
-            margin: 30px auto; animation: pulse-alert 2s infinite alternate;
-        }
-        .giant-water-drop span { transform: rotate(45deg); font-weight: bold; color: #fff; font-size: 18px; text-shadow: 0 0 5px #000; }
-
-        /* Step 4 Effects */
-        #wave-overlay {
-            position: absolute; inset: 0; display: none; z-index: 30; pointer-events: none;
-            background: radial-gradient(circle, rgba(101,231,255,0.6) 0%, rgba(2,132,199,0) 80%);
-            opacity: 0; transition: opacity 0.4s ease-out; transform: scale(0.8);
-        }
-        .particle {
-            position: absolute; width: 8px; height: 8px; background: #fff; border-radius: 50%;
-            box-shadow: 0 0 10px #65e7ff, 0 0 20px #65e7ff; z-index: 31; pointer-events: none;
-            animation: floatUp 1.2s ease-in forwards;
-        }
+        .shard-cap-left { border-radius: 40px 0 0 40px; }
+        .shard-cap-mid { border-radius: 0; }
+        .shard-cap-right { border-radius: 0 40px 40px 0; }
+        .shard-mol-node { border-radius: 50%; background: radial-gradient(circle at 30% 30%, #ffffff 0%, #e0f2fe 20%, #0284c7 65%, #1e3a8a 100%); }
+        .shard-bank-dome { border-radius: 80px 80px 0 0; }
+        .shard-bank-pillar { border-radius: 6px; }
+        .shard-bank-core { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+        .shard-bank-base { border-radius: 0 0 16px 16px; }
+        .shard-tower-tip { clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
+        .shard-tower-mid { clip-path: polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%); }
+        .shard-tower-low { clip-path: polygon(0% 0%, 100% 0%, 85% 100%, 15% 100%); }
+        .shard-tower-wing-l { clip-path: polygon(100% 0%, 100% 100%, 0% 100%); }
+        .shard-tower-wing-r { clip-path: polygon(0% 0%, 0% 100%, 100% 100%); }
 
         #gaugeWrap {
-            position: absolute; left: 20px; right: 20px; bottom: 25px; height: 26px;
-            background: rgba(6, 30, 66, 0.8); border-radius: 50px; overflow: hidden; border: 2px solid rgba(101,231,255,0.4); z-index: 20;
+            position: absolute; left: 20px; right: 20px; bottom: 25px; height: 22px;
+            background: rgba(6, 30, 66, 0.7); border-radius: 50px; overflow: hidden; border: 1.5px solid rgba(255,255,255,0.15);
         }
         #gauge {
             height: 100%; width: 0%; background: linear-gradient(90deg, #0284c7 0%, #65e7ff 60%, #ffffff 100%);
-            box-shadow: 0 0 15px var(--light-blue); transition: width 0.8s ease-in-out;
+            box-shadow: 0 0 12px var(--light-blue); transition: width 0.6s ease-in-out;
         }
 
-        /* Result Layout */
-        .result-scroll-wrapper { width: 100%; max-width: 440px; padding: 10px; display: flex; flex-direction: column; gap: 15px; }
+        /* STEP 2 대형 수분 물방울 시스템 */
+        .giant-water-drop {
+            width: 110px; height: 110px; border-radius: 50% 50% 50% 5px;
+            background: linear-gradient(135deg, #65e7ff, #005bc4); transform: rotate(-45deg); cursor: pointer;
+            box-shadow: 0 0 25px rgba(101, 231, 255, 0.7), inset 0 0 15px #fff;
+            display: flex; align-items: center; justify-content: center; margin: 25px auto; animation: pulse-alert 1.5s infinite alternate;
+        }
+        .giant-water-drop span { transform: rotate(45deg); font-weight: bold; color: #fff; font-size: 16px; text-shadow: 0 0 5px rgba(0,0,0,0.5); }
+
+        /* STEP 4 실시간 물결 및 수분 흩뿌리기 연출 레이어 */
+        #wave-overlay {
+            position: absolute; inset: 0; display: none; z-index: 30; pointer-events: none;
+            background: radial-gradient(circle, rgba(101,231,255,0.5) 0%, rgba(2,132,199,0) 75%);
+            opacity: 0; transition: opacity 0.4s ease, transform 0.4s ease; transform: scale(0.8);
+        }
+        .particle {
+            position: absolute; width: 8px; height: 8px; background: #fff; border-radius: 50%;
+            box-shadow: 0 0 10px #65e7ff, 0 0 20px #65e7ff; z-index: 31; pointer-events: none; animation: floatUp 1.2s ease-in forwards;
+        }
+
+        /* 🌟 기존 결과화면 스크롤 및 리워드 카드 레이아웃 완벽 보구 + 신규 정보 */
+        #step-5-result .result-scroll-wrapper {
+            display: flex; flex-direction: column; align-items: center; gap: 16px;
+            width: 100%; max-width: 440px; max-height: 92vh; overflow-y: auto; padding: 10px; box-sizing: border-box;
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .reward-card-top-view {
+            width: 100%; aspect-ratio: 1000 / 675; background-image: var(--reward-card-image);
+            background-size: 100% 200%; background-position: top center; background-repeat: no-repeat; border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 20px rgba(101,231,255,0.2);
+        }
+        .reward-card-bottom-view {
+            width: 100%; aspect-ratio: 1000 / 675; background-image: var(--reward-card-image);
+            background-size: 100% 200%; background-position: bottom center; background-repeat: no-repeat; border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 20px rgba(101,231,255,0.2);
+        }
         .score-display-crystal {
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(2, 132, 199, 0.4) 100%);
-            border: 1.5px solid rgba(101, 231, 255, 0.4); padding: 20px; border-radius: 16px;
-            font-size: 15px; font-weight: bold; text-shadow: 0 0 5px var(--light-blue); text-align: left; line-height: 1.8;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(2, 132, 199, 0.4) 100%);
+            border: 1.5px solid rgba(101, 231, 255, 0.4); padding: 16px 24px; border-radius: 16px; width: 100%; box-sizing: border-box;
+            font-size: 14px; font-weight: bold; text-shadow: 0 0 5px var(--light-blue); backdrop-filter: var(--crystal-blur); text-align: left; line-height: 1.8;
         }
-        .product-box { background: rgba(0,0,0,0.3); border-radius: 12px; padding: 15px; border: 1px solid rgba(255,255,255,0.2); text-align: left; }
-        .reward-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+        .product-info-box {
+            background: rgba(6, 30, 66, 0.6); border-radius: 14px; padding: 15px; border: 1.5px solid rgba(101, 231, 255, 0.3); text-align: left; width: 100%; box-sizing: border-box;
+        }
+        .reward-actions { display: flex; gap: 10px; justify-content: center; width: 100%; flex-wrap: wrap; }
 
+        /* 플로팅 토글 버튼 상주 시스템 */
+        #reopen-btn {
+            position: fixed; bottom: 30px; right: 20px; z-index: 999;
+            box-shadow: 0 0 20px var(--light-blue); border: 2px solid #fff; animation: pulse-alert 1s infinite alternate;
+        }
+
+        @keyframes slot-neon-glow {
+            0% { border-color: #00ffff; box-shadow: 0 0 12px rgba(0, 203, 254, 0.6), inset 0 0 8px rgba(0, 203, 254, 0.4); }
+            100% { border-color: #ffffff; box-shadow: 0 0 28px rgba(101, 231, 255, 1), inset 0 0 18px rgba(101, 231, 255, 0.7); }
+        }
         @keyframes float { 0%, 100% { transform: translateY(0px) rotate(var(--active-rot, 0deg)); } 50% { transform: translateY(-8px) rotate(var(--active-rot, 0deg)); } }
-        @keyframes pulse-alert { 0% { filter: brightness(0.9); transform: scale(0.95); } 100% { filter: brightness(1.2); transform: scale(1.05); } }
-        @keyframes slot-neon-glow { 0% { border-color: #00ffff; box-shadow: 0 0 12px rgba(0, 203, 254, 0.6); } 100% { border-color: #ffffff; box-shadow: 0 0 28px rgba(101, 231, 255, 1); } }
-        @keyframes floatUp { 0% { transform: translateY(0) scale(0.5); opacity: 1; } 100% { transform: translateY(-150px) scale(1.5); opacity: 0; } }
+        @keyframes pulse-alert { 0% { opacity: 0.85; filter: brightness(0.9); } 100% { opacity: 1; filter: brightness(1.2); } }
+        @keyframes floatUp { 0% { transform: translateY(0) scale(0.5); opacity: 1; } 100% { transform: translateY(-120px) scale(1.4); opacity: 0; } }
     </style>
 </head>
 <body>
@@ -156,85 +215,81 @@
 <div id="app">
     <div id="xr-cursor"></div>
     <video id="webcam-preview" autoplay playsinline></video>
-    
-    <!-- Step 4 Effect Overlay -->
     <div id="wave-overlay"></div>
 
-    <!-- ================= STEP 1: Welcome & Calibration ================= -->
     <div id="step-1-welcome" class="screen active">
-        <div class="glass-panel">
-            <div style="font-size:36px; font-weight:900; letter-spacing:6px; margin-bottom:10px; text-shadow: 0 0 10px var(--light-blue);">LANEIGE</div>
-            <h3 style="color: var(--light-blue);">Water Guardian Quest</h3>
+        <div class="card glass-panel" style="padding: 40px; max-width: 400px; text-align: center; border-radius: 32px;">
+            <div style="font-size:36px; font-weight:900; letter-spacing:6px; margin-bottom:5px; text-shadow: 0 0 10px var(--light-blue);">LANEIGE</div>
+            <h3>Water Drop Rescue</h3>
             
-            <div id="cam-init-box">
-                <p style="font-size:14px; color:#e0f2fe; margin: 20px 0;">게임 플레이를 위해 카메라 권한을 허용해주세요.</p>
-                <button class="crystal-btn" onclick="initXRAndCamera()">카메라 연동하기</button>
-            </div>
-
-            <div id="hand-guide-box" style="display: none;">
-                <p style="font-size:15px; color:#fff; margin: 20px 0; font-weight: bold;">
-                    ✅ 카메라 인식 완료!<br><br>손바닥을 카메라를 향해 활짝 펼치면<br>게임이 시작됩니다. 🖐
+            <div id="calibration-area" style="margin-top: 25px;">
+                <p style="font-size:14px; color:#e0f2fe; line-height:1.6; margin-bottom: 20px;">
+                    플레이 준비를 위해 웹캠 인식을 기동합니다.<br>
+                    <strong>[손바닥을 활짝 펼치면]</strong> 게임이 기동됩니다.
                 </p>
-                <p style="font-size:12px; color:#aaa;">(인식이 안될 경우 화면을 클릭해주세요)</p>
+                <button class="crystal-btn" style="margin: 0 auto;" onclick="initXRAndFlow()">시작하기</button>
             </div>
         </div>
     </div>
 
-    <!-- ================= STEP 2: Mission Intro ================= -->
     <div id="step-2-intro" class="screen">
-        <div class="glass-panel" style="background: rgba(0, 0, 0, 0.8); border-color: #ff4757;">
-            <h2 style="color: #ff4757; text-shadow: 0 0 10px red;">⚠️ 워터랜드 수분 에너지 경고!</h2>
-            <p style="font-size:15px; color:#e0f2fe; line-height:1.6; margin: 20px 0;">
-                피부 도시가 심각하게 건조해졌습니다.<br>유실된 수분 파편을 모아 도시를 구해주세요!<br><br>
-                현재 수분 회복 게이지: <strong style="color:#ff4757;">0%</strong><br>
-                목표 점수: <strong>2,000점</strong>
+        <div class="glass-panel" style="padding: 35px; max-width: 410px; background: rgba(10, 47, 99, 0.85); border-color: #ff4757;">
+            <h2 style="color: #ff4757; text-shadow: 0 0 10px rgba(255,71,87,0.5); margin-top:0;">⚠️ 워터랜드 수분 경보!</h2>
+            <p style="font-size:14px; color:#e0f2fe; line-height:1.6; margin: 15px 0;">
+                도시 전역에 유실된 수분 파편들로 인해 환경이 건조해지고 있습니다! 라네즈의 핵심 4대 에너지를 결합 복원하세요!<br><br>
+                현재 수분 회복 게이지: <span style="color:#ff4757; font-weight:bold;">0%</span><br>
+                미션 완료 목표 스코어: <strong>1,800점</strong>
             </p>
             
             <div id="start-water-drop" class="giant-water-drop" onclick="startPuzzleGame()">
-                <span>터치!</span>
+                <span>터치</span>
             </div>
-            <p style="font-size:13px; color:var(--light-blue);">손으로 물방울을 터치하여 미션 시작</p>
+            <p style="font-size:12px; color:var(--light-blue); margin: 0;">중앙의 물방울을 제스처 혹은 마우스로 터치하세요.</p>
         </div>
     </div>
 
-    <!-- ================= STEP 3: Puzzle Play & STEP 4: Effects ================= -->
     <div id="step-3-game" class="screen">
         <div id="hud">
-            <div class="hud-panel">Score: <span id="score">0</span></div>
-            <div class="hud-panel">Round <span id="round">1</span>/4</div>
-            <div class="hud-panel">수분 <span id="pct" style="margin-left:5px; color:var(--light-blue);">0</span>%</div>
+            <div id="score-panel" class="hud-panel">Score <span id="score">0</span></div>
+            <div id="round-panel" class="hud-panel">Round <span id="round">1</span>/4</div>
+            <div id="gauge-panel" class="hud-panel">수분 충전률 <span id="pct">0</span>%</div>
         </div>
-        <div id="mission-tip">⚠️ [4라운드] 조각을 가볍게 클릭/핀치하여 90도씩 회전시켜 결합하세요!</div>
+        <div id="mission-title">🔮 활성 에너지: <span id="target-object-name">로딩 중</span></div>
+        <div id="mission-tip">⚠️ [4라운드 특수 미션: 회전 복원] 조각을 가볍게 클릭(탭)하면 90도 회전합니다! 올바른 각도로 결합해야 타워가 복원됩니다!</div>
         <div id="board"></div>
         <div id="gaugeWrap"><div id="gauge"></div></div>
     </div>
 
-    <!-- ================= STEP 5: Result & Reward ================= -->
     <div id="step-5-result" class="screen">
-        <div class="glass-panel result-scroll-wrapper">
-            <h2 style="color:var(--light-blue); text-shadow:0 0 10px var(--light-blue); margin: 0;">Water Guardian<br>Mission Complete!</h2>
+        <button id="reopen-btn" class="crystal-btn" style="display: none;" onclick="togglePopup(true)">🎁 리워드 보기</button>
+
+        <div class="result-scroll-wrapper" id="result-popup">
+            <div class="reward-card-top-view"></div>
             
             <div class="score-display-crystal">
-                💧 수분 회복률 : <span style="color:#65e7ff;">100%</span><br>
-                🏆 플레이 점수 : <span id="final-score" style="color:#65e7ff;">0</span>점<br>
-                ⏱️ 소요 시간 : <span id="final-time" style="color:#65e7ff;">0</span>초<br>
-                🏅 랭킹 : 1위 (실시간)
+                🎉 WATER GUARDIAN MISSION COMPLETE!<br>
+                💧 최종 수분 회복률: <span style="color:var(--light-blue);">100% PERFECT</span><br>
+                ✨ 획득 스코어: <span id="final-score" style="color:var(--light-blue);">0</span>점<br>
+                ⏱️ 총 소요 시간: <span id="final-time" style="color:var(--light-blue);">0</span>초<br>
+                🏅 실시간 가디언 랭킹: <span style="color:var(--light-blue);">1위</span>
             </div>
 
-            <div class="product-box">
-                <h3 style="margin:0 0 10px 0; font-size:15px; color:var(--light-blue);">🎁 미션 성공 리워드 지급</h3>
-                <p style="margin:0; font-size:13px; color:#ddd; line-height:1.5;">
-                    ✔️ LANEIGE Water Bank Blue Hyaluronic Cream<br>
-                    ✔️ LANEIGE Water Sleeping Mask
+            <div class="product-info-box">
+                <h4 style="margin: 0 0 8px 0; font-size: 14px; color: var(--light-blue);">🎁 에너지 복원 성공 특별 증정품</h4>
+                <p style="margin: 0; font-size: 13px; color: #e2f8ff; line-height: 1.5;">
+                    • LANEIGE Water Bank Blue Hyaluronic Cream<br>
+                    • LANEIGE Water Sleeping Mask
                 </p>
             </div>
 
-            <div class="reward-actions">
-                <button class="crystal-btn btn-sm" onclick="alert('QR 쿠폰이 발급되었습니다!')">📱 QR 쿠폰 발급</button>
-                <button class="crystal-btn btn-sm" onclick="alert('제품 상세 페이지로 이동합니다.')">🔍 제품 정보 보기</button>
-                <button class="crystal-btn btn-sm" onclick="alert('SNS에 공유되었습니다!')">🔗 SNS 공유</button>
-            </div>
+            <div class="reward-card-bottom-view"></div>
             
+            <div class="reward-actions">
+                <button class="crystal-btn btn-sm" onclick="alert('📱 QR 쿠폰 및 인증 혜택 보관 완료!')">🎟️ QR 쿠폰 발급</button>
+                <button class="crystal-btn btn-sm" onclick="alert('🔍 제품 상세 정보 아카이브로 이동합니다.')">🔍 제품 정보 보기</button>
+                <button class="crystal-btn btn-sm" onclick="alert('🔗 SNS 공유가 완료되었습니다!')">🔗 SNS 공유</button>
+                <button class="crystal-btn btn-sm" style="background: rgba(101, 231, 255, 0.2); border: 1.5px solid var(--light-blue);" onclick="togglePopup(false)">🗺️ 도시 구경하기</button>
+            </div>
             <button class="crystal-btn" style="width:100%; margin-top:10px; background: none; border: 1.5px solid #fff;" onclick="location.reload()">다시 하기</button>
         </div>
     </div>
@@ -244,26 +299,46 @@
     const board = document.getElementById('board');
     const xrCursor = document.getElementById('xr-cursor');
     
-    // Application States
-    let appStep = 1;
+    let currentStep = 1;
     let score = 0, round = 1, placedInRound = 0, totalPlacedAll = 0;
     
-    // 라운드별 조각 개수 (1라:4개, 2라:6개, 3라:8개, 4라:4개)
-    const roundConfig = [4, 6, 8, 4]; 
+    // 🌟 기존 고유 라운드별 퍼즐 기획 구성 복구 ([4, 4, 5, 5])
+    const roundConfig = [4, 4, 5, 5]; 
     const maxPieces = roundConfig.reduce((a, b) => a + b, 0);
+
+    // 🌟 기존 고유 월드뷰 텍스트셋 복구
+    const roundWorldviewNames = [
+        "1라: 물길 연결 및 워터 캡슐 복원",
+        "2라: 히알루로닉 분자 결합 구조체",
+        "3라: 워터뱅크 바이오 가디언 금고",
+        "4라: 가디언 크리스탈 스파이어 타워"
+    ];
+
+    // 🌟 기존 라운드별 배경 이미지 데이터셋 완벽 복구
+    const roundBackgrounds = {
+        1: "url('assets/images/0.png')",
+        2: "url('assets/images/20.png')",
+        3: "url('assets/images/45.png')",
+        4: "url('assets/images/75.png')"
+    };
 
     let activePiece = null;
     let isPinchingPrevious = false;
     let pinchStartTime = 0;
     
-    // Timer Variables
+    // 시간 측정을 위한 타이머 변수
     let gameTimer;
     let elapsedSeconds = 0;
 
-    async function initXRAndCamera() {
-        document.getElementById('cam-init-box').style.display = 'none';
-        document.getElementById('hand-guide-box').style.display = 'block';
+    // STEP 1 기동 및 카메라 바인딩
+    async function initXRAndFlow() {
+        document.getElementById('calibration-area').innerHTML = `
+            <p style='font-size:14px; color:#65e7ff; font-weight:bold;'>카메라 하드웨어 연동 중...</p>
+        `;
         
+        // 클릭 우회 트리거 바인딩 (카메라 무반응 시 세이프가드)
+        document.getElementById('step-1-welcome').onclick = () => { if(currentStep === 1) changeStep(2); };
+
         try {
             xrCursor.style.display = 'block';
             const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
@@ -276,21 +351,19 @@
                 width: 640, height: 480
             });
             await camera.start();
+            
+            document.getElementById('calibration-area').innerHTML = `
+                <p style='font-size:14px; color:#fff; font-weight:bold;'>✅ 인식 환경 정렬 완료!<br><br>손바닥을 활짝 펼쳐보이거나 화면을 터치하면 인트로 화면으로 진입합니다.</p>
+            `;
         } catch (err) {
-            console.log("카메라 환경 문제로 클릭 전용 모드를 활성화합니다.");
+            console.log("웹캠 탐색 불가. 터치 제어 전용 시스템으로 우회 전환합니다.");
             xrCursor.style.display = 'none';
-            // Click to bypass if camera fails
-            document.getElementById('step-1-welcome').onclick = () => { if(appStep===1) changeStep(2); };
         }
     }
 
     function onHandResults(results) {
-        if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-            xrCursor.style.display = 'none';
-            return;
-        }
+        if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) return;
 
-        xrCursor.style.display = 'block';
         const landmarks = results.multiHandLandmarks[0];
         const handX = (1 - landmarks[8].x) * window.innerWidth;
         const handY = landmarks[8].y * window.innerHeight;
@@ -298,97 +371,118 @@
         xrCursor.style.left = (handX - 12) + 'px';
         xrCursor.style.top = (handY - 12) + 'px';
 
-        const distPinch = Math.hypot(landmarks[4].x - landmarks[8].x, landmarks[4].y - landmarks[8].y);
-        const isPinching = distPinch < 0.07;
+        const dist = Math.hypot(landmarks[4].x - landmarks[8].x, landmarks[4].y - landmarks[8].y);
+        const isPinching = dist < 0.07;
 
         if (isPinching) xrCursor.classList.add('pinching');
         else xrCursor.classList.remove('pinching');
 
-        // STEP 1: Open Hand Detection (Start Game)
-        if (appStep === 1) {
-            const isFingersOpen = landmarks[8].y < landmarks[5].y && landmarks[12].y < landmarks[9].y && landmarks[16].y < landmarks[13].y;
-            const handWidth = Math.hypot(landmarks[4].x - landmarks[20].x, landmarks[4].y - landmarks[20].y);
-            if (isFingersOpen && handWidth > 0.15) {
+        // STEP 1 인터랙션: 손바닥 감지 시 인트로(스텝 2)로 점프
+        if (currentStep === 1) {
+            const openCheck = landmarks[8].y < landmarks[5].y && landmarks[12].y < landmarks[9].y && landmarks[16].y < landmarks[13].y;
+            if (openCheck && Math.hypot(landmarks[4].x - landmarks[20].x, landmarks[4].y - landmarks[20].y) > 0.15) {
                 changeStep(2);
             }
         }
-        // STEP 2: Touch Water Drop to Start
-        else if (appStep === 2) {
-            const drop = document.getElementById('start-water-drop').getBoundingClientRect();
-            if (handX > drop.left && handX < drop.right && handY > drop.top && handY < drop.bottom) {
+        // STEP 2 인터랙션: 중앙 거대 물방울에 손을 대면 게임 스타트
+        else if (currentStep === 2) {
+            const dropRect = document.getElementById('start-water-drop').getBoundingClientRect();
+            if (handX > dropRect.left && handX < dropRect.right && handY > dropRect.top && handY < dropRect.bottom) {
                 startPuzzleGame();
             }
         }
-        // STEP 3: Gameplay Interaction
-        else if (appStep === 3) {
-            handleGameLogicXR(handX, handY, isPinching);
+        // STEP 3 인터랙션: 기존 핸드 퍼즐 게임 제어 로직 가동
+        else if (currentStep === 3) {
+            handleXRGameLogic(handX, handY, isPinching);
         }
     }
 
-    function changeStep(newStep) {
-        appStep = newStep;
+    function changeStep(stepIdx) {
+        currentStep = stepIdx;
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-        if(appStep === 2) document.getElementById('step-2-intro').classList.add('active');
-        if(appStep === 3) document.getElementById('step-3-game').classList.add('active');
-        if(appStep === 5) document.getElementById('step-5-result').classList.add('active');
+        
+        if(currentStep === 2) {
+            document.getElementById('step-2-intro').classList.add('active');
+            document.getElementById('app').style.backgroundImage = "url('assets/images/image_2.png')";
+        } else if(currentStep === 3) {
+            document.getElementById('step-3-game').classList.add('active');
+        } else if(currentStep === 5) {
+            document.getElementById('step-5-result').classList.add('active');
+            document.getElementById('app').style.backgroundImage = "url('assets/images/image_2.png')";
+        }
     }
 
     function startPuzzleGame() {
-        if(appStep === 3) return;
         changeStep(3);
         score = 0; round = 1; totalPlacedAll = 0; elapsedSeconds = 0;
         document.getElementById('score').textContent = score;
-        document.getElementById('pct').textContent = '0';
-        document.getElementById('gauge').style.width = '0%';
+        document.getElementById('pct').textContent = "0";
+        document.getElementById('gauge').style.width = "0%";
         
-        gameTimer = setInterval(() => elapsedSeconds++, 1000);
+        // 시간 타이머 개시
+        gameTimer = setInterval(() => { elapsedSeconds++; }, 1000);
         makeRound(round);
     }
 
+    // 🌟 기존 고유 슬롯 및 조각 형태 맵핑 데이터를 포함한 렌더링 엔진 복구
     function makeRound(r) {
         board.innerHTML = '';
         placedInRound = 0;
+        const currentPieces = roundConfig[r - 1];
         document.getElementById('round').textContent = r;
+        document.getElementById('target-object-name').textContent = roundWorldviewNames[r - 1];
+
+        // 라운드별 특화 배경이미지 연동 복구
+        document.getElementById('app').style.backgroundImage = roundBackgrounds[r];
         document.getElementById('mission-tip').style.display = (r === 4) ? 'block' : 'none';
 
         const bWidth = board.clientWidth || window.innerWidth - 40;
         const bHeight = board.clientHeight || window.innerHeight - 240;
         const centerX = bWidth / 2;
-        const centerY = bHeight * 0.35; 
+        const centerY = bHeight * 0.32; 
 
-        // 각 라운드별 슬롯 배치 구성 (4조각, 6조각, 8조각, 4조각(회전))
+        // 🌟 기존 정밀 좌표 시스템 및 유물 스타일 복구
         const slotLayouts = {
-            1: [{x:-110, y:0}, {x:-35, y:0}, {x:40, y:0}, {x:115, y:0}],
-            2: [{x:-80, y:-45}, {x:0, y:-45}, {x:80, y:-45}, {x:-80, y:45}, {x:0, y:45}, {x:80, y:45}],
-            3: [{x:-120, y:-45}, {x:-40, y:-45}, {x:40, y:-45}, {x:120, y:-45}, {x:-120, y:45}, {x:-40, y:45}, {x:40, y:45}, {x:120, y:45}],
-            4: [{x:-40, y:-80}, {x:-40, y:0}, {x:-110, y:80}, {x:30, y:80}]
+            1: [{x:-150, y:20, s:'shard-cap-left'}, {x:-70, y:20, s:'shard-cap-mid'}, {x:10, y:20, s:'shard-cap-mid'}, {x:90, y:20, s:'shard-cap-right'}],
+            2: [{x:-40, y:-40, s:'shard-mol-node'}, {x:-110, y:30, s:'shard-mol-node'}, {x:30, y:30, s:'shard-mol-node'}, {x:-40, y:100, s:'shard-mol-node'}],
+            3: [{x:-40, y:-70, s:'shard-bank-dome'}, {x:-95, y:0, s:'shard-bank-pillar'}, {x:15, y:0, s:'shard-bank-pillar'}, {x:-40, y:5, s:'shard-bank-core'}, {x:-40, y:75, s:'shard-bank-base'}],
+            4: [{x:-40, y:-90, s:'shard-tower-tip'}, {x:-40, y:-15, s:'shard-tower-mid'}, {x:-40, y:60, s:'shard-tower-low'}, {x:-115, y:60, s:'shard-tower-wing-l'}, {x:35, y:60, s:'shard-tower-wing-r'}]
         };
 
-        const currentLayout = slotLayouts[r];
-        const numPieces = roundConfig[r - 1];
+        const currentLayout = slotLayouts[r] || slotLayouts[1];
 
-        for (let i = 0; i < numPieces; i++) {
+        // 🌟 기존 1라운드 물길 파이프라인 생성 복구
+        if (r === 1) {
+            let pipe = document.createElement('div');
+            pipe.id = 'main-pipeline';
+            pipe.className = 'water-pipeline';
+            pipe.style.left = (centerX - 150) + 'px';
+            pipe.style.top = (centerY + 52) + 'px'; 
+            pipe.style.width = '320px';
+            board.appendChild(pipe);
+        }
+
+        for (let i = 0; i < currentPieces; i++) {
             const layout = currentLayout[i];
             
             let s = document.createElement('div');
-            s.className = `slot`;
+            s.className = `slot ${layout.s}`;
             s.style.left = (centerX + layout.x) + 'px';
             s.style.top = (centerY + layout.y) + 'px';
             s.dataset.id = i;
             board.appendChild(s);
 
             let p = document.createElement('div');
-            p.className = `piece`;
+            p.className = `piece ${layout.s}`;
             
-            // 조각 초기 위치 (화면 하단 랜덤)
             let pLeft = Math.random() < 0.5 ? (Math.random() * (centerX - 130)) : (centerX + 110 + Math.random() * (centerX - 170));
-            let pTop = bHeight * 0.65 + (Math.random() * (bHeight * 0.2 - 30));
+            let pTop = bHeight * 0.62 + (Math.random() * (bHeight * 0.3 - 40));
             
             p.style.left = pLeft + 'px';
             p.style.top = pTop + 'px';
+            p.style.setProperty('--delay', `${(i * 0.35).toFixed(1)}s`);
             p.dataset.id = i;
 
-            // 4라운드 회전 로직 추가
             let rot = 0;
             if (r === 4) {
                 const angles = [90, 180, 270];
@@ -399,20 +493,19 @@
             p.style.transform = `rotate(${rot}deg)`;
 
             board.appendChild(p);
-            initMouseInteraction(p);
+            initPointerInteraction(p);
         }
     }
 
-    // 마우스 전용 드래그 & 드롭 이벤트 (카메라 오류 대비용)
-    function initMouseInteraction(p) {
+    // 마우스 및 직접 터치 제어 지원 바인딩
+    function initPointerInteraction(p) {
         let isDragging = false;
-        let startX = 0, startY = 0, pStartX = 0, pStartY = 0;
-        let mPinchStart = 0;
+        let startX = 0, startY = 0, pStartX = 0, pStartY = 0, mPinchStart = 0;
 
         p.onpointerdown = e => {
             if (p.classList.contains('locked')) return;
-            isDragging = true; p.setPointerCapture(e.pointerId);
-            p.classList.add('held'); mPinchStart = Date.now();
+            isDragging = true; p.setPointerCapture(e.pointerId); p.classList.add('held');
+            mPinchStart = Date.now();
             startX = e.clientX; startY = e.clientY;
             pStartX = parseFloat(p.style.left); pStartY = parseFloat(p.style.top);
             activePiece = p;
@@ -428,130 +521,144 @@
             if (!isDragging) return;
             isDragging = false; p.releasePointerCapture(e.pointerId); p.classList.remove('held');
 
-            // 4라운드: 짧게 클릭 시 90도 회전
-            if (round === 4 && (Date.now() - mPinchStart) < 250) {
+            // 4라 회전 인터랙션
+            if (round === 4 && (Date.now() - mPinchStart) < 280) {
                 let rot = (parseInt(p.dataset.rotation) + 90) % 360;
                 p.dataset.rotation = rot; p.style.setProperty('--active-rot', `${rot}deg`); p.style.transform = `rotate(${rot}deg)`;
                 activePiece = null; return;
             }
-            checkDropTarget(p);
+            checkDropMatch(p);
             activePiece = null;
         };
     }
 
-    // XR 제스처 제어
-    function handleGameLogicXR(localX, localY, isPinching) {
+    // XR 제스처 게임 판정 처리 엔진
+    function handleXRGameLogic(x, y, isPinching) {
         const boardRect = board.getBoundingClientRect();
-        const bX = localX - boardRect.left;
-        const bY = localY - boardRect.top;
+        const localX = x - boardRect.left;
+        const localY = y - boardRect.top;
 
         if (isPinching && !isPinchingPrevious) {
             pinchStartTime = Date.now();
             document.querySelectorAll('.piece:not(.locked)').forEach(p => {
-                const pX = parseFloat(p.style.left) + 35;
-                const pY = parseFloat(p.style.top) + 35;
-                if (Math.hypot(bX - pX, bY - pY) < 50 && !activePiece) {
+                const pX = parseFloat(p.style.left) + 40;
+                const pY = parseFloat(p.style.top) + 40;
+                if (Math.hypot(localX - pX, localY - pY) < 55 && !activePiece) {
                     activePiece = p; p.classList.add('held');
                 }
             });
         } else if (isPinching && activePiece) {
-            activePiece.style.left = (bX - 35) + 'px';
-            activePiece.style.top = (bY - 35) + 'px';
+            activePiece.style.left = (localX - 40) + 'px';
+            activePiece.style.top = (localY - 40) + 'px';
         } else if (!isPinching && isPinchingPrevious) {
             if (activePiece) {
                 activePiece.classList.remove('held');
-                if (round === 4 && (Date.now() - pinchStartTime) < 300) {
+                if (round === 4 && (Date.now() - pinchStartTime) < 280) {
                     let rot = (parseInt(activePiece.dataset.rotation) + 90) % 360;
                     activePiece.dataset.rotation = rot;
                     activePiece.style.setProperty('--active-rot', `${rot}deg`);
                     activePiece.style.transform = `rotate(${rot}deg)`;
                     activePiece = null; isPinchingPrevious = isPinching; return;
                 }
-                checkDropTarget(activePiece);
+                checkDropMatch(activePiece);
                 activePiece = null;
             }
         }
         isPinchingPrevious = isPinching;
     }
 
-    // 드롭 영역 결합 체크 로직
-    function checkDropTarget(p) {
+    // 드롭 정밀 결합 판단부
+    function checkDropMatch(p) {
         document.querySelectorAll('.slot').forEach(s => {
             if (s.dataset.id === p.dataset.id) {
                 const dist = Math.hypot(parseFloat(p.style.left) - parseFloat(s.style.left), parseFloat(p.style.top) - parseFloat(s.style.top));
                 const rot = parseInt(p.dataset.rotation || 0);
 
-                if (dist < 45 && rot === 0) {
+                if (dist < 40 && rot === 0) {
                     p.classList.add('locked');
                     p.style.left = s.style.left; p.style.top = s.style.top;
                     p.style.setProperty('--active-rot', `0deg`); p.style.transform = `rotate(0deg)`;
-                    
+                    p.onpointerdown = null;
+
                     placedInRound++; totalPlacedAll++;
-                    score += 150; document.getElementById('score').textContent = score;
+                    score += 100; document.getElementById('score').textContent = score;
                     
-                    s.style.display = "none";
-                    checkRoundCompletion();
+                    s.style.animation = "none"; s.style.border = "none"; s.style.boxShadow = "none"; s.style.background = "none";
+                    
+                    // 🌟 기존 1라운드 파이프라인 활성화 로직 복구
+                    if (round === 1 && placedInRound === 4) {
+                        document.getElementById('main-pipeline').classList.add('activated');
+                    }
+
+                    updateProgress();
                 }
             }
         });
     }
 
-    // 라운드 클리어 체크
-    function checkRoundCompletion() {
+    // STEP 4: 수분 충전 연출 내재화형 프로그레스 핸들러
+    function updateProgress() {
         if (placedInRound === roundConfig[round - 1]) {
-            showStep4Effect(round); // STEP 4 연출 실행
-            
+            // [STEP 4 연출 부가] 물결 효과 및 수분 입자 연출 가동
+            triggerStep4VisualEffect(round);
+
             if (round < 4) {
                 round++;
-                setTimeout(() => makeRound(round), 1600); // 연출 끝난 후 다음 라운드 진행
+                setTimeout(() => makeRound(round), 1500);
             } else {
-                setTimeout(() => showStep5Result(), 1600);
+                setTimeout(() => {
+                    clearInterval(gameTimer);
+                    document.getElementById('final-score').textContent = score;
+                    document.getElementById('final-time').textContent = elapsedSeconds;
+                    
+                    changeStep(5);
+                    togglePopup(true);
+                }, 1500);
             }
         }
     }
 
-    // STEP 4: 수분 충전 연출 (이펙트 & 게이지)
-    function showStep4Effect(currentRound) {
-        // 물결 웨이브 효과
+    // STEP 4 리얼타임 이펙트 함수
+    function triggerStep4VisualEffect(completedRound) {
+        // 대형 물결 화면 팽창 효과
         const wave = document.getElementById('wave-overlay');
         wave.style.display = 'block';
         requestAnimationFrame(() => {
-            wave.style.transform = 'scale(1.5)';
-            wave.style.opacity = '1';
+            wave.style.transform = 'scale(1.6)'; wave.style.opacity = '1';
         });
         setTimeout(() => {
             wave.style.opacity = '0';
-            setTimeout(() => { wave.style.display = 'none'; wave.style.transform = 'scale(0.8)'; }, 500);
-        }, 800);
+            setTimeout(() => { wave.style.display = 'none'; wave.style.transform = 'scale(0.8)'; }, 400);
+        }, 700);
 
-        // 수분 입자 흩뿌리기
+        // 하단에서 위로 솟구치는 탄산/수분 입자 분수 연출
         for(let i=0; i<25; i++) {
             let pt = document.createElement('div');
             pt.className = 'particle';
             pt.style.left = (Math.random() * 100) + '%';
-            pt.style.top = (40 + Math.random() * 40) + '%';
-            let size = Math.random() * 10 + 5;
-            pt.style.width = size + 'px'; pt.style.height = size + 'px';
+            pt.style.top = (45 + Math.random() * 35) + '%';
+            let rSize = Math.random() * 9 + 5;
+            pt.style.width = rSize + 'px'; pt.style.height = rSize + 'px';
             document.body.appendChild(pt);
             setTimeout(() => pt.remove(), 1200);
         }
 
-        // 수분 게이지 및 배경 변화 (목표: 20% -> 45% -> 70% -> 100%)
-        const gaugeGoals = [20, 45, 70, 100];
-        const pct = gaugeGoals[currentRound - 1];
-        document.getElementById('pct').textContent = pct;
-        document.getElementById('gauge').style.width = pct + '%';
+        // 🌟 스토리상 명시된 단계별 피부 수분 상승률 동기화 (20% → 45% → 70% → 100%)
+        const milestonePct = [20, 45, 70, 100];
+        const targetPercent = milestonePct[completedRound - 1];
+        document.getElementById('pct').textContent = targetPercent;
+        document.getElementById('gauge').style.width = targetPercent + '%';
     }
 
-    // STEP 5: 최종 결과 창 호출
-    function showStep5Result() {
-        clearInterval(gameTimer);
-        xrCursor.style.display = 'none';
-        
-        document.getElementById('final-score').textContent = score;
-        document.getElementById('final-time').textContent = elapsedSeconds;
-        
-        changeStep(5);
+    // 🌟 기존 결과창 여닫기/플로팅 토글 제어 알고리즘 완전 복구
+    function togglePopup(show) {
+        const popup = document.getElementById('result-popup');
+        const reopenBtn = document.getElementById('reopen-btn');
+        if (show) {
+            popup.style.display = 'flex'; reopenBtn.style.display = 'none';
+        } else {
+            popup.style.display = 'none'; reopenBtn.style.display = 'flex';
+        }
     }
 </script>
 </body>
